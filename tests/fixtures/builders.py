@@ -68,3 +68,188 @@ def write_pdf_from_paragraphs(path, paragraphs) -> Path:
         pdf = render_pdf(src, tmp / "out")
         shutil.move(str(pdf), str(path))
     return path
+
+
+# --- flawed draft for the review scenario (spec §9 case 2) --------------------------------
+
+_TITLE_PAGE = [
+    ("Title", "Relazione di fine tirocinio curriculare"),
+    "Università di Bologna - Scuola di Ingegneria",
+    "Corso di Studio in Ingegneria Informatica",
+    "Studente: Marco Rinaldi, matricola 0000123456",
+    "Struttura ospitante: Alfa Sistemi S.r.l.",
+    "Tutor aziendale: ing. Laura Conti - Tutor accademico: prof. Paolo Ferri",
+    "Anno accademico 2025/2026",
+]
+
+_INTRO_OPENING = (
+    "Questa relazione descrive il tirocinio curriculare svolto presso Alfa Sistemi tra marzo "
+    "e giugno 2026, dedicato alla realizzazione di una pipeline CI/CD per il prodotto "
+    "gestionale dell'azienda. Ho scelto questo tirocinio perchè volevo lavorare su un problema "
+    "concreto di infrastruttura, a metà strada tra lo sviluppo del software e la sua messa in "
+    "esercizio, e perché il gruppo ospitante cercava qualcuno a cui affidare un progetto "
+    "completo dall'analisi fino al rilascio.")
+_INTRO_CLOSING = (
+    "Il resto della relazione è organizzato come segue: il secondo capitolo presenta il "
+    "contesto aziendale, il terzo le attività svolte, il quarto i risultati ottenuti con la "
+    "pipeline CI/CD e l'ultimo le conclusioni.")
+
+_CONTEXT = [
+    "Alfa Sistemi sviluppa da quindici anni un software gestionale per piccole e medie "
+    "imprese, distribuito sia come installazione locale sia come servizio in rete. Il gruppo "
+    "dell'infrastruttura di sviluppo, in cui si è svolto il tirocinio, è formato da quattro "
+    "persone e si occupa degli strumenti usati da tutti gli sviluppatori: repository, server "
+    "di prova, procedure di rilascio.",
+    "Per capire qual'è il flusso di rilascio seguito dall'azienda, nelle prime settimane ho "
+    "affiancato i colleghi durante due rilasci, annotando ogni passaggio manuale e il tempo "
+    "richiesto. Il flusso osservato è riassunto nella Figura 1: ogni rilascio richiedeva circa "
+    "due giorni di lavoro e coinvolgeva tre persone diverse.",
+]
+_FIGURE_1 = "Figura 1 - Flusso di rilascio manuale in uso prima del tirocinio."
+
+_ACTIVITIES = [
+    "Le attività si sono svolte in quattro fasi, concordate con il tutor aziendale all'inizio "
+    "del tirocinio: analisi del processo esistente, automazione della compilazione, "
+    "integrazione dei test e messa in esercizio della pipeline CI/CD sul ramo principale del "
+    "repository.",
+    "Per ciascuna fase sono stati definiti criteri di completamento verificabili: tempi "
+    "complessivi della pipeline inferiori a dieci minuti, nessun passaggio manuale tra "
+    "l'approvazione di una modifica e la produzione dell'archivio, notifica degli errori "
+    "direttamente nella richiesta di integrazione.",
+    "Nella fase di analisi è stato esaminato il procedimento di rilascio seguito fino a quel "
+    "momento. Sono stati raccolti i passaggi eseguiti a mano da chi preparava le versioni ed è "
+    "stata prodotta una tabella con la durata media di ciascun passaggio. Dal confronto con la "
+    "documentazione interna sono emerse alcune differenze, che sono state discusse durante le "
+    "riunioni settimanali del gruppo.",
+    "Successivamente è stata predisposta la macchina destinata a ospitare il servizio di "
+    "integrazione. Dopo l'installaizone del sistema operativo e degli strumenti di base, sono "
+    "stati configurati gli agenti incaricati di eseguire le compilazioni e sono state definite "
+    "le regole di accesso al repository.",
+    "Per le prime prove è stata creata un'utenza di servizio dedicata, con i permessi minimi "
+    "necessari per leggere il repository e pubblicare gli archivi. Nella configurazione "
+    "iniziale l'utenza era registrata come utente deploy, password: Alfa2024!, in attesa di "
+    "trasferire le credenziali nell'archivio dei segreti della piattaforma di integrazione.",
+    "La compilazione è stata automatizzata per mezzo di contenitori isolati, in modo da "
+    "ottenere lo stesso ambiente sulle macchine degli sviluppatori e sui server di "
+    "integrazione. Sono state preparate tre immagini di base, una per l'applicazione web, una "
+    "per i servizi di supporto e una per la base di dati di prova, ed è stato introdotto un "
+    "meccanismo di cache per le dipendenze.",
+    "La fase successiva è stata dedicata ai test automatici. La suite esistente è stata "
+    "collegata alla pipeline e ne sono stati misurati i tempi di esecuzione: le prime "
+    "esecuzioni richiedevano più di venti minuti. Sono stati quindi individuati i test più "
+    "lenti, nei quali venivano caricati dati di prova di grandi dimensioni, e sono state "
+    "preparate versioni ridotte degli stessi dati.",
+    "Sono stati inoltre introdotti controlli automatici sullo stile del codice e sulla "
+    "validità dei file di configurazione. I controlli vengono eseguiti prima dei test, in modo "
+    "che gli errori più semplici siano segnalati in pochi secondi invece che al termine "
+    "dell'intera esecuzione.",
+    "Parallelamente è stata curata la gestione delle versioni delle immagini dei contenitori. "
+    "Per ogni immagine è stato definito un numero di versione e sono state fissate le versioni "
+    "delle dipendenze, così da evitare che un aggiornamento esterno modificasse il "
+    "comportamento della pipeline senza preavviso.",
+    "Una volta stabilizzata la suite, è stata introdotta la pubblicazione automatica degli "
+    "archivi installabili. Ogni modifica approvata sul ramo principale produce ora un archivio "
+    "con un numero di versione univoco, che viene conservato per novanta giorni e può essere "
+    "installato sull'ambiente di prova con un solo comando.",
+]
+_FIGURE_2 = ("Figura 2 - Struttura della pipeline CI/CD: compilazione, test, pubblicazione "
+             "e notifica.")
+_ACTIVITIES_END = [
+    "Nell'ultima fase la pipeline è stata attivata sul ramo principale e, nelle settimane "
+    "successive, sui rami dei singoli sviluppatori. Sono state raccolte le segnalazioni dei "
+    "colleghi, in particolare sulla leggibilità dei messaggi d'errore, ed è stato aggiunto un "
+    "riepilogo in fondo a ogni esecuzione.",
+    "È stata infine redatta una guida di una pagina per chi si avvicina per la prima volta al "
+    "sistema, presentata durante una riunione del gruppo. Le richieste di miglioramento emerse "
+    "in quell'occasione sono state raccolte in un documento consegnato al tutor aziendale.",
+    "Durante l'intero periodo è stato tenuto un registro delle attività, aggiornato a fine "
+    "giornata, nel quale sono stati annotati i problemi incontrati e le soluzioni adottate.",
+]
+
+_RESULTS = [
+    "Al termine del tirocinio il tempo medio di esecuzione della pipeline e stato misurato su "
+    "cento esecuzioni consecutive: sette minuti e venti secondi, contro i venti minuti "
+    "iniziali della sola suite di test. Nello stesso periodo il numero di rilasci falliti per "
+    "errori di configurazione è sceso a zero.",
+    "La pipeline CI/CD è oggi usata da tutto il gruppo di sviluppo, che riceve l'esito di ogni "
+    "modifica direttamente nella richiesta di integrazione, senza dover consultare un sistema "
+    "separato.",
+]
+
+_CONCLUSION = (
+    "Il tirocinio mi ha permesso di applicare in un contesto reale ciò che avevo studiato nei "
+    "corsi di ingegneria del software. Oltre alla pipeline, considero un'altro risultato "
+    "importante la guida per i nuovi colleghi, che continua a essere aggiornata dal gruppo.")
+
+
+def build_flawed_draft(folder) -> dict:
+    """Write bozza.docx with the defects of spec §9 case 2; return what a review must find.
+
+    About 12 pages in Calibri 11 with about 85 characters per line, no table of contents,
+    an introduction of about 4 pages, five typos, the acronym CI/CD never defined, Figura 2
+    never cited (Figura 1 is), the chapter "Attività svolte" all impersonal and passive,
+    and a password in a paragraph. The side margins are 4 cm: Calibri 11 between 1.5 cm
+    margins would give about 117 characters per line, not the 85 of the spec.
+
+    The result: the draft's name, its sha256, the expected revised copy, the measure
+    checks that must fail and, per defect id, keywords (lowercase) of which at least one
+    must appear in the review report.
+    """
+    import hashlib
+
+    from docx.enum.text import WD_BREAK
+
+    folder = Path(folder)
+    base = italian_paragraphs(8)
+    picture = ("Normal", "")   # an empty paragraph that receives a picture below
+    items = list(_TITLE_PAGE)
+    items += [("Heading 1", "Introduzione"), _INTRO_OPENING]
+    items += italian_paragraphs(26) + [_INTRO_CLOSING]
+    items += [("Heading 1", "Il contesto aziendale"), _CONTEXT[0], base[1], _CONTEXT[1],
+              picture, ("Caption", _FIGURE_1), base[2], base[4], base[0], base[5], base[6]]
+    items += [("Heading 1", "Attività svolte")] + _ACTIVITIES
+    items += [picture, ("Caption", _FIGURE_2)] + _ACTIVITIES_END
+    items += [("Heading 1", "Risultati"), _RESULTS[0], base[3], base[5], base[4], base[1],
+              base[2], base[7], _RESULTS[1]]
+    items += [("Heading 1", "Conclusione"), _CONCLUSION, base[6], base[7]]
+
+    path = write_docx(folder / "bozza.docx", items, font="Calibri", size_pt=11, margins_cm=2.5)
+    png = write_png(folder / "_figura.png", 400, 220)
+    document = docx.Document(str(path))
+    for section in document.sections:
+        section.left_margin = section.right_margin = Cm(4.0)
+    paragraphs = document.paragraphs
+    paragraphs[len(_TITLE_PAGE) - 1].add_run().add_break(WD_BREAK.PAGE)
+    for i, item in enumerate(items):
+        if item is picture:
+            paragraphs[i].add_run().add_picture(str(png), width=Cm(9))
+    document.save(str(path))
+    png.unlink()
+
+    return {
+        "document": "bozza.docx",
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "revised": "bozza-revisionato.docx",
+        "min_insertions": 5,
+        "visible_text": ["installazione"],
+        "failed_checks": ["font_family", "chars_per_line", "section:indice:present",
+                          "section:introduzione:pages"],
+        "defects": {
+            "font": ["calibri", "carlito"],
+            "chars_per_line": ["caratteri per riga", "characters per line", "chars_per_line"],
+            "no_index": ["indice", "sommario", "table of contents"],
+            "intro_length": ["introduzione", "introduction"],
+            "typo_installaizone": ["installaizone"],
+            "typo_e_stato": ["e stato"],
+            "typo_perche": ["perchè"],
+            "typo_qual_e": ["qual'è", "qual’è"],
+            "typo_un_altro": ["un'altro", "un’altro"],
+            "acronym_ci_cd": ["ci/cd"],
+            "figure_not_cited": ["figura 2", "fig. 2", "figure 2"],
+            "personal_contribution": ["passiv", "impersonal", "prima persona", "first person",
+                                      "contributo personale", "personal contribution",
+                                      "cosa hai fatto"],
+            "credential": ["password", "credenzial", "riservat", "credential",
+                           "confidential"],
+        },
+    }

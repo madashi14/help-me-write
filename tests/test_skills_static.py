@@ -58,7 +58,7 @@ def test_skill_frontmatter(skill_md):
     assert meta["name"] == skill_md.parent.name
     description = meta["description"]
     assert isinstance(description, str) and description.startswith("Use when")
-    assert len(description) < 1024
+    assert len(description) <= 500  # Codex truncates longer descriptions
 
 
 @pytest.mark.parametrize("skill_md", SKILLS, ids=lambda p: p.parent.name)
@@ -83,6 +83,31 @@ def test_linee_guida_description_keywords():
     for word in ["guidelines", "regolamento", "template", "facsimile", "page limits", "font",
                  "formatting rules"]:
         assert word in meta["description"], word
+
+
+def test_revisione_description_triggers():
+    meta, _ = _split(ROOT / "skills" / "revisione" / "SKILL.md")
+    for word in ["finished draft", "rivedi", "revisione", "correggi la bozza", "review my draft",
+                 "proofread", "Not for writing"]:
+        assert word in meta["description"], word
+
+
+def test_revisore_prompt_contract():
+    text = (ROOT / "skills" / "revisione" / "prompt-revisore.md").read_text(encoding="utf-8")
+    placeholders = set(re.findall(r"\{([A-Z_]+)\}", text))
+    assert placeholders == {"EXTRACT", "MEASURE", "GUIDELINES", "PROFILE", "ANSWERS",
+                            "EDITS_OUT", "NOTES_OUT", "DOCUMENT_LANGUAGE", "USER_LANGUAGE"}
+    for needed in ["## Form", "## Content", "## Questions for the author", '"by": "revisore"',
+                   "## Content checklist", "Never invent", "[DA VERIFICARE"]:
+        assert needed in text, needed
+
+
+def test_rapporto_template_sections_in_order():
+    text = (ROOT / "skills" / "revisione" / "modello-rapporto.md").read_text(encoding="utf-8")
+    template = re.search(r"^```markdown\n(.*?)^```", text, re.S | re.M).group(1)
+    headings = [line[3:] for line in template.splitlines() if line.startswith("## ")]
+    assert headings == ["Riepilogo", "Forma", "Lingua", "Contenuto", "Bibliografia",
+                        "Da sistemare a mano", "Domande per te"]
 
 
 def _profile_sections(profile):
