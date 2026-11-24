@@ -1,6 +1,7 @@
 """Turn guideline numbers (lines/page, chars/line, font) into margins and line spacing."""
 import json
 import math
+import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -87,7 +88,10 @@ def compute_layout(rules, font: str, paper_cm=(21.0, 29.7), vertical_margin_cm=2
 
 
 def load_layout(path) -> Layout:
-    return Layout.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+    try:
+        return Layout.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise LayoutError(f"cannot read layout file {path}: {exc!r}") from exc
 
 
 def add_arguments(parser):
@@ -115,3 +119,193 @@ def run(args) -> int:
             f"bottom {m['bottom']}, left {m['left']}, right {m['right']}; line pitch {pitch}")
     cli.emit(asdict(layout), args, text=text)
     return 0
+
+
+# --- applying a layout to a .docx copy -------------------------------------------------
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_HEADING_RE = re.compile(r"^(?:heading|titolo)\s*([1-3])$", re.IGNORECASE)
+_PAGE_RE = re.compile(r"\bPAGE\b")
+
+
+def _q(tag):
+    return f"{{{_W}}}{tag}"
+
+
+def _is_heading(style) -> bool:
+    return bool(_HEADING_RE.match(style.name or "") or _HEADING_RE.match(style.style_id or ""))
+
+
+def _based_on_normal(style) -> bool:
+    seen = set()
+    cur = style.base_style
+    while cur is not None and cur.style_id not in seen:
+        if cur.style_id == "Normal":
+            return True
+        seen.add(cur.style_id)
+        cur = cur.base_style
+    return False
+
+
+def _set_style_font(style, font_name):
+    rpr = style.element.get_or_add_rPr()
+    rfonts = rpr.find(_q("rFonts"))
+    if rfonts is None:
+        rfonts = rpr.makeelement(_q("rFonts"), {})
+        rpr.insert(0, rfonts)
+    for attr in list(rfonts.attrib):
+        rfonts.attrib.pop(attr)
+    for attr in ("ascii", "hAnsi", "cs", "eastAsia"):
+        rfonts.set(_q(attr), font_name)
+
+
+def _set_exact_spacing(style, pitch_pt):
+    ppr = style.element.get_or_add_pPr()
+    spacing = ppr.find(_q("spacing"))
+    if spacing is None:
+        spacing = ppr.get_or_add_spacing()
+    spacing.set(_q("line"), str(round(pitch_pt * 20)))
+    spacing.set(_q("lineRule"), "exact")
+
+
+def _strip_direct_overrides(element) -> int:
+    """Remove direct font/size/line-spacing overrides under element; return how many."""
+    count = 0
+    for rpr in element.iter(_q("rPr")):
+        if rpr.getparent().tag != _q("r"):
+            continue  # leave paragraph-mark properties alone
+        for tag in ("rFonts", "sz", "szCs"):
+            for child in rpr.findall(_q(tag)):
+                rpr.remove(child)
+                count += 1
+    for spacing in list(element.iter(_q("spacing"))):
+        if spacing.getparent().tag != _q("pPr"):
+            continue
+        removed = False
+        for attr in ("line", "lineRule"):
+            if _q(attr) in spacing.attrib:
+                del spacing.attrib[_q(attr)]
+                removed = True
+        count += removed
+        if not spacing.attrib:
+            spacing.getparent().remove(spacing)
+    return count
+
+
+def _footers(section):
+    for footer in (section.footer, section.first_page_footer, section.even_page_footer):
+        if not footer.is_linked_to_previous:
+            yield footer
+
+
+def _has_page_field(document) -> bool:
+    for section in document.sections:
+        for footer in _footers(section):
+            for el in footer._element.iter(_q("fldSimple"), _q("instrText")):
+                if _PAGE_RE.search(el.get(_q("instr"), "") + (el.text or "")):
+                    return True
+    return False
+
+
+def _add_page_field(footer):
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import parse_xml
+
+    paragraphs = footer.paragraphs
+    if len(paragraphs) == 1 and not paragraphs[0].text.strip():
+        paragraph = paragraphs[0]
+    else:
+        paragraph = footer.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph._p.append(parse_xml(
+        f'<w:fldSimple xmlns:w="{_W}" w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>'))
+
+
+def apply_layout(src, layout: Layout, dst) -> list[str]:
+    """Write a copy of src formatted per layout to dst; return readable list of changes."""
+    import docx
+    from docx.shared import Cm, Pt
+
+    src, dst = Path(src), Path(dst)
+    if src.resolve() == dst.resolve():
+        raise ValueError(f"destination would overwrite the original: {src}")
+    document = docx.Document(str(src))
+    changes = []
+
+    m = layout.margins_cm
+    for section in document.sections:
+        section.page_width, section.page_height = Cm(layout.paper_cm[0]), Cm(layout.paper_cm[1])
+        section.top_margin, section.bottom_margin = Cm(m["top"]), Cm(m["bottom"])
+        section.left_margin, section.right_margin = Cm(m["left"]), Cm(m["right"])
+    changes.append(
+        f"page {layout.paper_cm[0]:g}x{layout.paper_cm[1]:g} cm, margins cm: top {m['top']}, "
+        f"bottom {m['bottom']}, left {m['left']}, right {m['right']} "
+        f"({len(document.sections)} section(s))")
+
+    styled = []
+    for style in document.styles:
+        if style.type != docx.enum.style.WD_STYLE_TYPE.PARAGRAPH:
+            continue
+        is_normal = style.style_id == "Normal" or (style.name or "").lower() == "normal"
+        if is_normal:
+            _set_style_font(style, layout.docx_font)
+            style.font.size = Pt(layout.font_size_pt)
+            styled.append(style.name)
+        elif _is_heading(style):
+            _set_style_font(style, layout.docx_font)
+            styled.append(style.name)
+        if layout.line_pitch_pt is not None and (is_normal or _based_on_normal(style)):
+            _set_exact_spacing(style, layout.line_pitch_pt)
+    changes.append(f"font {layout.docx_font} on styles: {', '.join(styled)}; "
+                   f"Normal size {layout.font_size_pt:g} pt")
+    if layout.line_pitch_pt is not None:
+        changes.append(f"exact line spacing {layout.line_pitch_pt} pt on Normal and styles based on it")
+
+    removed = _strip_direct_overrides(document.element.body)
+    if removed:
+        changes.append(f"removed {removed} direct font/size/line-spacing override(s) from the body")
+
+    if not _has_page_field(document):
+        for section in document.sections:
+            section.footer.is_linked_to_previous = False
+            _add_page_field(section.footer)
+        changes.append("added a centered page number to the footer")
+
+    document.save(str(dst))
+    return changes
+
+
+def add_format_arguments(parser):
+    parser.add_argument("input", help="the .docx to format (never modified)")
+    parser.add_argument("--layout", required=True, help="layout.json from the layout command")
+    parser.add_argument("-o", "--output", required=True, help="formatted .docx to write")
+
+
+def run_format(args) -> int:
+    from . import cli
+
+    if cli.refuses_overwrite(args.input, args):
+        return 2
+    try:
+        layout = load_layout(args.layout)
+        changes = apply_layout(args.input, layout, args.output)
+    except LayoutError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # unreadable/not a docx, unwritable destination
+        print(f"error: cannot format {args.input}: {exc!r}", file=sys.stderr)
+        return 2
+    cli.emit({"output": str(args.output), "changes": changes}, _no_json_file(args),
+             text="\n".join([f"wrote {args.output}"] + [f"- {c}" for c in changes]))
+    return 0
+
+
+class _no_json_file:
+    """View of args for emit(): -o is the document here, so never treat it as a JSON path."""
+
+    def __init__(self, args):
+        self.json = getattr(args, "json", False)
+        self.output = None

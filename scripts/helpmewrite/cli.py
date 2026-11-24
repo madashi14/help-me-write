@@ -7,15 +7,18 @@ import json
 import sys
 
 _COMMANDS = {}
+_JSON_OUTPUT = {}
 
 
-def register(name, add_arguments, handler):
+def register(name, add_arguments, handler, json_output=True):
     """Register a subcommand.
 
     add_arguments(parser) adds its arguments; handler(args) -> int is the exit code.
-    Every subcommand automatically gets --json and -o/--output.
+    Every subcommand automatically gets --json, and -o/--output (JSON output path) unless
+    json_output=False: then -o belongs to the command (the document it produces).
     """
     _COMMANDS[name] = (add_arguments, handler)
+    _JSON_OUTPUT[name] = json_output
 
 
 def emit(data: dict, args, text=None) -> None:
@@ -51,7 +54,8 @@ def _build_parser():
         p = sub.add_parser(name)
         add_arguments(p)
         p.add_argument("--json", action="store_true", help="print JSON")
-        p.add_argument("-o", "--output", help="write JSON to this file")
+        if _JSON_OUTPUT.get(name, True):
+            p.add_argument("-o", "--output", help="write JSON to this file")
         p.set_defaults(handler=handler)
     return parser
 
@@ -62,6 +66,7 @@ def _load_commands():
 
     register("doctor", doctor.add_arguments, doctor.run)
     register("extract", extract.add_arguments, extract.run)
+    register("format", layout.add_format_arguments, layout.run_format, json_output=False)
     register("layout", layout.add_arguments, layout.run)
     register("rules", rules.add_arguments, rules.run)
 
