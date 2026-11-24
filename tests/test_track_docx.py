@@ -244,6 +244,16 @@ def test_track_refuses_hyperlink_and_field(tmp_path):
     assert len(Document(tmp_path / "c.docx").comments) == 0
 
 
+def test_content_control_is_refused(tmp_path):
+    # e.g. a Mendeley citation: a run-level w:sdt the plugin regenerates
+    sdt = ('<w:sdt><w:sdtPr><w:tag w:val="MENDELEY_CITATION_v3_x"/></w:sdtPr><w:sdtContent>'
+           + run("(Verdi, 2019)") + "</w:sdtContent></w:sdt>")
+    src = xml_docx(tmp_path / "a.docx", run("Come noto ") + sdt + run(", il metodo regge."))
+    for find in ("Verdi", "noto (Verdi"):
+        r = apply_edits_docx(src, S(E(0, find, "Neri")), tmp_path / "b.docx")
+        assert r.failed == [{"index": 0, "reason": "hyperlink/field"}]
+
+
 def test_field_spanning_paragraphs_and_simple_fields_are_refused(tmp_path):
     begin = ('<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">'
              ' ADDIN ZOTERO_BIBL {"uncited":[]} CSL_BIBLIOGRAPHY </w:instrText></w:r>'
