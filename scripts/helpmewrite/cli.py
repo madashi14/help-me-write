@@ -47,9 +47,10 @@ def _build_parser():
 
 def _load_commands():
     # Command modules register themselves here; later tasks add their import.
-    from . import doctor
+    from . import doctor, extract
 
     register("doctor", doctor.add_arguments, doctor.run)
+    register("extract", extract.add_arguments, extract.run)
 
 
 def main(argv=None) -> int:
