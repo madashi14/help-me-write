@@ -161,3 +161,29 @@ def test_bib_cli_and_errors(tmp_path, capsys):
     assert cli.main(["pdftext", str(bad)]) == 2
     err = capsys.readouterr().err
     assert "Traceback" not in err
+
+
+def test_sitografia_entries_and_stop_heading(tmp_path):
+    doc = write_docx(tmp_path / "d.docx", [
+        "Testo [1] e [4].", ("Heading 1", "Bibliografia"),
+        "Rossi, M. (2021). Tempi. Rivista.", "Bianchi, L. (2019). Pipeline. Conf.",
+        ("Heading 1", "Sitografia"), "https://a.example/x", "https://b.example/y",
+        ("Heading 1", "Allegati"), "Tabella A"])
+    r = extract_bibliography(doc)
+    assert [e.key for e in r.entries] == ["[1]", "[2]", "[3]", "[4]"]
+    assert all("Sitografia" not in e.raw and "Allegati" not in e.raw for e in r.entries)
+    assert r.uncited_entries == ["[2]", "[3]"]
+
+
+def test_split_sentences_italian_abbreviations():
+    t = "Poi l'Ing. Rossi disse [1]. Dott. Bianchi della Acme S.p.A. confermò. Vale 3.5 punti."
+    assert split_sentences(t) == ["Poi l'Ing. Rossi disse [1].",
+                                  "Dott. Bianchi della Acme S.p.A. confermò.", "Vale 3.5 punti."]
+
+
+def test_code_and_url_brackets_are_not_citations(tmp_path):
+    doc = write_docx(tmp_path / "d.docx", [
+        "Codice: a[1] = x; url http://x.it/a[2]. Testo vero [3].",
+        ("Heading 1", "Bibliografia"), "[3] Rossi, M. (2021). T. V."])
+    r = extract_bibliography(doc)
+    assert [c.key for c in r.citations] == ["[3]"] and r.missing_entries == []

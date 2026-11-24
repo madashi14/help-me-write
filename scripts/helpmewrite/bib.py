@@ -65,7 +65,17 @@ def _surname_key(name: str) -> str:
     return "".join(c for c in _strip_accents(name).lower() if c.isalpha())
 
 
-_ABBREV = ("et al.", "es.", "p.", "pp.", "cfr.", "fig.", "vol.", "n.", "e.g.", "i.e.")
+_ABBREV = {"es.", "p.", "pp.", "cfr.", "fig.", "vol.", "n.", "e.g.", "i.e.", "ing.", "dott.",
+           "dr.", "prof.", "sig.", "avv.", "arch.", "geom.", "ecc.", "ca.", "dott.ssa.",
+           "prof.ssa.", "s.p.a.", "s.r.l.", "s.n.c.", "sez.", "cap.", "art.", "all."}
+
+
+def _is_abbreviation(head: str) -> bool:
+    low = head.lower()
+    if low.endswith("et al."):
+        return True
+    m = re.search(r"[\w.]+$", low)
+    return bool(m and m.group(0) in _ABBREV)
 
 
 def _sentence_spans(text: str) -> list[tuple[int, int]]:
@@ -76,9 +86,10 @@ def _sentence_spans(text: str) -> list[tuple[int, int]]:
         elif ch in "])":
             depth = max(0, depth - 1)
         elif ch in ".?!" and depth == 0 and i + 1 < len(text) and text[i + 1].isspace():
-            head = text[start:i + 1].lower()
-            if ch == "." and (head.endswith(_ABBREV)
-                              or re.search(r"(?<![^\W\d_])[A-Z]\.$", text[start:i + 1])):
+            head = text[start:i + 1]
+            nxt = text[i + 1:].lstrip()[:1]
+            if ch == "." and (_is_abbreviation(head) or nxt.islower()
+                              or re.search(r"(?<![^\W\d_])[A-Z]\.$", head)):
                 continue
             spans.append((start, i + 1))
             start = i + 1
@@ -224,8 +235,16 @@ def _author_year_key(name: str, year: str) -> str | None:
 
 
 def _scan_numeric(text: str) -> list[tuple[int, str]]:
-    return [(m.start(), f"[{n}]") for m in _NUM_CITE.finditer(text)
-            for n in expand_numeric(m.group(1))]
+    out = []
+    for m in _NUM_CITE.finditer(text):
+        before = text[m.start() - 1] if m.start() else ""
+        token = re.search(r"\S*$", text[:m.start()]).group(0)
+        if before and (before.isalnum() or before in "_/"):
+            continue  # code like a[1] or a URL path, not a citation
+        if "://" in token or token.lower().startswith("www."):
+            continue
+        out.extend((m.start(), f"[{n}]") for n in expand_numeric(m.group(1)))
+    return out
 
 
 def _scan_author_year(text: str) -> list[tuple[int, str]]:
@@ -274,15 +293,35 @@ def _bib_files(paragraphs: list[dict], main: Path, explicit: Path | None) -> lis
     return files
 
 
+_WEB_HEADING = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:sitografia|webgrafia|"
+                         r"sitografia e webgrafia)\s*:?\s*$", re.IGNORECASE)
+_END_HEADING = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:allegat\w*|appendic\w*|appendix|"
+                          r"ringraziament\w*|acknowledg\w*)\b.*$", re.IGNORECASE)
+
+
+def _is_heading(p: dict, pattern) -> bool:
+    return (p.get("heading_level") is not None or "heading_level" not in p) \
+        and bool(pattern.match(p["text"]))
+
+
 def _split_body_and_entries(paragraphs: list[dict]) -> tuple[list[dict], list[dict]]:
     idx = None
     for i, p in enumerate(paragraphs):
-        is_head = p.get("heading_level") is not None or "heading_level" not in p
-        if is_head and _BIB_HEADING.match(p["text"]):
+        if _is_heading(p, _BIB_HEADING):
             idx = i
     if idx is None:
         return paragraphs, []
-    return paragraphs[:idx], [p for p in paragraphs[idx + 1:] if p["text"].strip()]
+    entries = []
+    for p in paragraphs[idx + 1:]:
+        if p.get("heading_level") is not None or _END_HEADING.match(p["text"]):
+            if _is_heading(p, _WEB_HEADING):
+                continue
+            break
+        if _is_heading(p, _WEB_HEADING):
+            continue
+        if p["text"].strip():
+            entries.append(p)
+    return paragraphs[:idx], entries
 
 
 def _finish(style, entries, cites) -> BibReport:
