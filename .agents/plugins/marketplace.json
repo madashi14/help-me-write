@@ -1,0 +1,20 @@
+{
+  "name": "help-me-write",
+  "interface": {
+    "displayName": "Help Me Write"
+  },
+  "plugins": [
+    {
+      "name": "help-me-write",
+      "source": {
+        "source": "url",
+        "url": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

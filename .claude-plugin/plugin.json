@@ -1,0 +1,10 @@
+{
+  "name": "help-me-write",
+  "description": "Review and write formal documents (internship reports, papers): checks guidelines, layout and bibliography, and proposes tracked corrections.",
+  "version": "0.1.0",
+  "author": {
+    "name": "help-me-write"
+  },
+  "license": "MIT",
+  "keywords": ["writing", "review", "docx", "latex", "thesis", "bibliography"]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "help-me-write",
+  "description": "Marketplace for the help-me-write plugin",
+  "owner": {
+    "name": "help-me-write"
+  },
+  "plugins": [
+    {
+      "name": "help-me-write",
+      "description": "Review and write formal documents (internship reports, papers): checks guidelines, layout and bibliography, and proposes tracked corrections.",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "help-me-write"
+      }
+    }
+  ]
+}
