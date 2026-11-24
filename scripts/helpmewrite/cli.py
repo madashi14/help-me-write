@@ -62,13 +62,15 @@ def _build_parser():
 
 def _load_commands():
     # Command modules register themselves here; later tasks add their import.
-    from . import doctor, edits, extract, layout, measure, rules, track_tex
+    from . import bib, doctor, edits, extract, layout, measure, rules, track_tex
 
+    register("bib", bib.add_bib_arguments, bib.run_bib)
     register("doctor", doctor.add_arguments, doctor.run)
     register("extract", extract.add_arguments, extract.run)
     register("format", layout.add_format_arguments, layout.run_format, json_output=False)
     register("layout", layout.add_arguments, layout.run)
     register("measure", measure.add_arguments, measure.run)
+    register("pdftext", bib.add_pdftext_arguments, bib.run_pdftext)
     register("rules", rules.add_arguments, rules.run)
     register("texdiff", track_tex.add_texdiff_arguments, track_tex.run_texdiff,
              json_output=False)

@@ -52,3 +52,19 @@ def write_png(path, width=100, height=100) -> Path:
                      + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
                      + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
     return path
+
+
+def write_pdf_from_paragraphs(path, paragraphs) -> Path:
+    """Write a PDF by rendering a temporary .docx with LibreOffice (needs soffice)."""
+    import shutil
+    import tempfile
+
+    from helpmewrite.render import render_pdf
+
+    path = Path(path)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        src = write_docx(tmp / "src.docx", paragraphs)
+        pdf = render_pdf(src, tmp / "out")
+        shutil.move(str(pdf), str(path))
+    return path
