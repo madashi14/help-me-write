@@ -312,6 +312,8 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
             _set_style_font(style, layout.docx_font)
             styled.append(style.name)
         else:  # inherit font and size from Normal
+            if style.base_style is None:
+                style.base_style = document.styles["Normal"]
             rpr = style.element.rPr
             if rpr is not None:
                 for tag in ("rFonts", "sz", "szCs"):

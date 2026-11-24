@@ -260,6 +260,8 @@ def test_body_text_style_with_own_font_inherits_normal(tmp_path):
     el = out.styles["Body Text"].element
     assert out.styles["Body Text"].font.name is None and out.styles["Body Text"].font.size is None
     assert 'w:lineRule="exact"' in el.xml
+    assert out.styles["Body Text"].base_style.name == "Normal"
+    assert out.styles["Normal"].font.size.pt == 12
 
 
 def test_title_page_keeps_direct_formatting(tmp_path):
