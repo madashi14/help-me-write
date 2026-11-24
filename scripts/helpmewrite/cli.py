@@ -62,12 +62,13 @@ def _build_parser():
 
 def _load_commands():
     # Command modules register themselves here; later tasks add their import.
-    from . import doctor, extract, layout, rules
+    from . import doctor, extract, layout, measure, rules
 
     register("doctor", doctor.add_arguments, doctor.run)
     register("extract", extract.add_arguments, extract.run)
     register("format", layout.add_format_arguments, layout.run_format, json_output=False)
     register("layout", layout.add_arguments, layout.run)
+    register("measure", measure.add_arguments, measure.run)
     register("rules", rules.add_arguments, rules.run)
 
 

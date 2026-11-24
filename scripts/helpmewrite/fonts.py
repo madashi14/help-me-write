@@ -15,9 +15,11 @@ _ALIASES = {
 
 DOCX_FONT = {"times": "Times New Roman", "helvetica": "Arial", "courier": "Courier New"}
 
-# Initial values; times/helvetica are calibrated against rendered PDFs.
-# Courier is monospace: 0.60 em is exact.
-AVG_CHAR_WIDTH_EM = {"times": 0.44, "helvetica": 0.50, "courier": 0.60}
+# Effective width per character (spaces included) of a full line of Italian prose.
+# times/helvetica were calibrated on PDFs rendered by LibreOffice (Liberation fonts) and
+# measured by measure.py, so that a 65-character layout measures a median of ~65 characters
+# per full line (word wrapping included). Courier is monospace: 0.60 em is exact.
+AVG_CHAR_WIDTH_EM = {"times": 0.41, "helvetica": 0.45, "courier": 0.60}
 
 _SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
 
