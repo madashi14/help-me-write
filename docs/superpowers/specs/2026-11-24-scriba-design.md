@@ -1,6 +1,9 @@
 # Scriba — documento di progetto
 
-*Data: 24 novembre 2026 · Nome provvisorio: "scriba"*
+*Data: 24 novembre 2026 · Nome provvisorio: "scriba" · Repository: `madashi14/help-me-write`*
+
+*Stato: approvato dall'utente il 24/11/2026, con l'aggiunta del revisore della
+bibliografia (§6.4).*
 
 Legenda: le decisioni prese dall'utente sono indicate come **[deciso]**. Le scelte
 proposte da Claude e non ancora confermate esplicitamente sono indicate come
@@ -126,8 +129,11 @@ Le fasi sono quelle indicate dall'utente **[deciso]**; i dettagli sotto ogni fas
      passare al successivo.
    - *Ordine* **[proposta]**: prima il corpo, poi introduzione e conclusione, che lo
      riassumono.
-8. **Revisione finale** con un revisore indipendente **[deciso]** (§6). Le domande
-   aperte tornano all'utente, si correggono e si rimisura.
+   - *Fonti* **[proposta]**: si citano solo fonti presenti nella cartella, nel file
+     `.bib` dell'utente o indicate dall'utente.
+8. **Revisione finale** con un revisore indipendente **[deciso]** (§6) e un revisore
+   della bibliografia **[deciso]** (§6.4). Le domande aperte tornano all'utente, si
+   correggono e si rimisura.
 
 **Formati di bozza accettati** **[proposta]**: `.docx` e `.tex`, con revisioni sul
 file; `.md` e `.txt`, convertiti nel formato scelto. Una bozza solo in PDF riceve
@@ -163,6 +169,7 @@ scriba/
   .claude-plugin/marketplace.json   # per installare da GitHub in Claude Code
   .codex-plugin/plugin.json         # manifest Codex (verificare il formato corrente)
   agents/revisore.md                # sub-agente revisore (Claude Code)
+  agents/revisore-bibliografia.md   # sub-agente revisore della bibliografia (Claude Code)
   skills/
     scriba/                 # ingresso: rileva modalità e stato, orchestra le fasi
     analisi-materiale/      # fase 1
@@ -172,6 +179,7 @@ scriba/
     scrittura-capitolo/     # fase 7
     figure/                 # schemi/grafici generati + inserimento immagini esistenti
     revisione/              # §6, invocabile anche da sola
+    revisione-bibliografia/ # §6.4, invocabile anche da sola
   profili/                  # un file per tipo di documento (§5.3)
   scripts/                  # Python, multipiattaforma (§7)
   tests/
@@ -220,8 +228,9 @@ solo file.
 - ortografia e grammatica;
 - coerenza dei termini;
 - acronimi definiti al primo uso;
-- numerazione di figure e tabelle, didascalie, riferimenti nel testo;
-- citazioni e bibliografia.
+- numerazione di figure e tabelle, didascalie, riferimenti nel testo.
+
+Le citazioni e la bibliografia sono compito del revisore della bibliografia (§6.4).
 
 **Contenuto**, con la checklist del profilo. Per la relazione di tirocinio:
 - il contributo personale emerge chiaramente;
@@ -263,6 +272,66 @@ Ciclo dopo la revisione:
 3. il plugin rimisura.
 
 Al massimo due cicli automatici, poi la decisione passa all'utente.
+
+### 6.4 Revisore della bibliografia [deciso; dettagli: proposta]
+
+È un secondo agente indipendente, dedicato alle fonti. Lavora insieme al revisore
+principale nella revisione finale e nella modalità "solo revisione", ogni volta che il
+documento contiene citazioni o affermazioni che le richiederebbero. Si può anche
+invocare da solo.
+
+**Compiti [deciso]:**
+
+1. **Coerenza tra testo e fonte.** Per ogni punto in cui una fonte è citata, verifica
+   che ciò che il testo afferma corrisponda a ciò che la fonte dice davvero.
+2. **Citazioni mancanti.** Indica dove il testo esprime concetti, dati o affermazioni
+   che richiedono una nota bibliografica ma non ce l'hanno.
+
+**Come lavora [proposta]:**
+
+- **Esistenza e dati della fonte.** Controlla che ogni voce esista e che autori,
+  titolo, anno, rivista o sede e DOI siano corretti. Una voce che non si trova viene
+  segnalata come citazione possibilmente errata o inventata.
+- **Da dove legge le fonti**, in quest'ordine:
+  1. PDF o file presenti nella cartella del lavoro o indicati dall'utente;
+  2. versioni ad accesso aperto trovate online (DOI, arXiv, repository istituzionali);
+  3. solo abstract e metadati.
+
+  Online escono solo i riferimenti bibliografici (titoli, DOI), mai il testo
+  dell'utente.
+- **Livello di verifica.** Per ogni citazione dichiara su cosa ha verificato: testo
+  completo, solo abstract, oppure fonte non accessibile. Non dichiara mai "verificata"
+  una citazione che non lo è.
+- **Esito per ogni citazione:** supportata, parzialmente supportata, non supportata o
+  non verificabile. L'esito è accompagnato dal **passaggio della fonte** (citazione
+  testuale con pagina o sezione), così l'utente può controllare il giudizio.
+- **Cosa richiede una citazione:**
+  - sì: dati e numeri presi dalla letteratura, definizioni, risultati, stato dell'arte,
+    metodi e strumenti di altri, affermazioni non ovvie;
+  - no: il lavoro svolto dall'utente stesso e la conoscenza comune del campo.
+
+  Il criterio è cruciale per la relazione di tirocinio, in cui gran parte del testo
+  descrive attività personali che non vanno citate.
+- **Fonti mancanti.** Segnala il punto. Se nella cartella o nel file `.bib`
+  dell'utente esiste una fonte adatta, la propone. Non inserisce mai una fonte che
+  non ha verificato. Cerca fonti online solo se l'utente lo chiede, e le propone solo
+  dopo averle verificate.
+- **Coerenza formale:**
+  - stile di citazione uniforme;
+  - ogni voce della bibliografia è citata nel testo;
+  - ogni citazione nel testo è presente in bibliografia.
+- **Consegna**, coerente con §6.2:
+  - Word: i problemi diventano **commenti a margine** ancorati alla frase; le
+    correzioni ai dati bibliografici (es. anno sbagliato) diventano revisioni
+    tracciate;
+  - LaTeX: le correzioni vanno nella copia e nel PDF delle differenze; i problemi
+    vanno nel rapporto con file e numero di riga;
+  - in entrambi i casi, una sezione "Bibliografia" nel rapporto di revisione.
+- **Indipendenza**, come §6.3:
+  - Claude Code: sub-agente `agents/revisore-bibliografia.md`, in parallelo al
+    revisore principale;
+  - Codex: sub-agente se gli agenti multipli sono attivi, altrimenti una passata
+    dedicata.
 
 ## 7. Componenti tecnici [proposta]
 
@@ -348,6 +417,10 @@ rigenera** il file. Passa invece alle correzioni tracciate (§6.2).
   delle linee guida **[proposta]**.
 - **Distribuzione:** un repository GitHub da cui installare il plugin in Claude Code e
   in Codex. Account e visibilità (pubblico o privato) si decidono nel piano.
+- **Rete per la bibliografia:** il revisore della bibliografia usa la ricerca e la
+  lettura web dell'agente. In Claude Code sono disponibili; in Codex dipendono dalla
+  configurazione. Senza rete lavora solo sulle fonti locali e lo dichiara nel rapporto.
+  Le fonti a pagamento non leggibili sono verificate solo su abstract e metadati.
 - **Privacy:** il materiale resta sul computer dell'utente. Il plugin non invia nulla a
   servizi esterni oltre a quanto fa già l'agente stesso.
 - **Contesto limitato del modello:** materiale e documento vanno gestiti a pezzi
@@ -391,7 +464,18 @@ Immagini:    schemi, schizzi e disegni ammessi
 3. **Ripresa:** interrompere a metà (dopo 2 capitoli) e riprendere in una nuova
    sessione senza perdere decisioni né rifare domande già fatte.
 4. **Codex:** il caso 1 o il caso 2 eseguito con Codex.
-5. **Script:** test automatici per calcolo impaginazione, misura (su documenti di
+5. **Bibliografia.** Si prepara una bozza con difetti bibliografici inseriti apposta:
+   - una frase che attribuisce a una fonte (presente come PDF) un'affermazione che la
+     fonte non contiene;
+   - una voce inesistente;
+   - un anno di pubblicazione sbagliato;
+   - un dato numerico preso dalla letteratura senza citazione;
+   - una citazione nel testo assente dalla bibliografia.
+
+   Il revisore della bibliografia deve trovarli tutti. Per l'attribuzione errata deve
+   riportare il passaggio della fonte. Non deve chiedere citazioni per le attività
+   personali descritte dall'utente.
+6. **Script:** test automatici per calcolo impaginazione, misura (su documenti di
    esempio con valori noti), validità dei `.docx` con revisioni.
 
 ## 10. Lasciato al costruttore
