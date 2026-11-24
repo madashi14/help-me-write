@@ -1,6 +1,6 @@
-# Scriba — documento di progetto
+# help-me-write — documento di progetto
 
-*Data: 24 novembre 2026 · Nome provvisorio: "scriba" · Repository: `madashi14/help-me-write`*
+*Data: 24 novembre 2026 · Nome: `help-me-write` (inizialmente "scriba") · Repository: `madashi14/help-me-write`*
 
 *Stato: approvato dall'utente il 24/11/2026, con l'aggiunta del revisore della
 bibliografia (§6.4).*
@@ -164,14 +164,12 @@ Il riferimento è la struttura multi-piattaforma del plugin Superpowers: una car
 `skills/` condivisa e un manifest per ogni piattaforma.
 
 ```
-scriba/
+help-me-write/
   .claude-plugin/plugin.json        # manifest Claude Code
   .claude-plugin/marketplace.json   # per installare da GitHub in Claude Code
   .codex-plugin/plugin.json         # manifest Codex (verificare il formato corrente)
-  agents/revisore.md                # sub-agente revisore (Claude Code)
-  agents/revisore-bibliografia.md   # sub-agente revisore della bibliografia (Claude Code)
   skills/
-    scriba/                 # ingresso: rileva modalità e stato, orchestra le fasi
+    help-me-write/          # ingresso: rileva modalità e stato, orchestra le fasi
     analisi-materiale/      # fase 1
     linee-guida/            # fasi 2–4 (tipo, regole, formato)
     struttura/              # fase 5 (indice + frontespizio)
@@ -242,7 +240,7 @@ Le citazioni e la bibliografia sono compito del revisore della bibliografia (§6
 ### 6.2 Come consegna le correzioni [deciso: opzione B]
 
 - **Word:** una **copia** del documento con le correzioni come **revisioni**
-  (inserimenti e cancellazioni tracciati, autore "Scriba"), che l'utente accetta o
+  (inserimenti e cancellazioni tracciati, autore "help-me-write"), che l'utente accetta o
   rifiuta in Word o LibreOffice. Il file originale non viene mai toccato.
 - **LaTeX:** una copia corretta dei sorgenti più un **PDF delle differenze** (tipo
   `latexdiff`) che evidenzia in colore cosa è cambiato.
@@ -259,9 +257,13 @@ Le citazioni e la bibliografia sono compito del revisore della bibliografia (§6
 
 ### 6.3 Indipendenza [proposta]
 
+*Nota del piano:* i prompt dei revisori sono file nella cartella della skill
+e vengono passati a un sub-agente generico. Così lo stesso file funziona su Claude
+Code e su Codex, senza duplicare le istruzioni in `agents/`.
+
 Il revisore lavora solo su documento, linee guida e checklist, **senza** la
 conversazione in cui il testo è stato scritto.
-- **Claude Code:** sub-agente `agents/revisore.md`.
+- **Claude Code:** sub-agente generico che riceve il prompt `skills/revisione/prompt-revisore.md`.
 - **Codex:** sub-agente se gli agenti multipli sono attivi; altrimenti passata di
   revisione nella stessa sessione, rileggendo tutto dai file e seguendo la checklist
   alla lettera.
@@ -328,7 +330,8 @@ invocare da solo.
     vanno nel rapporto con file e numero di riga;
   - in entrambi i casi, una sezione "Bibliografia" nel rapporto di revisione.
 - **Indipendenza**, come §6.3:
-  - Claude Code: sub-agente `agents/revisore-bibliografia.md`, in parallelo al
+  - Claude Code: sub-agente generico con il prompt
+    `skills/revisione-bibliografia/prompt-revisore-bibliografia.md`, in parallelo al
     revisore principale;
   - Codex: sub-agente se gli agenti multipli sono attivi, altrimenti una passata
     dedicata.
@@ -337,7 +340,7 @@ invocare da solo.
 
 ### 7.1 File di stato
 
-Cartella `.scriba/` dentro la cartella del lavoro, leggibile e modificabile da
+Cartella `.help-me-write/` dentro la cartella del lavoro, leggibile e modificabile da
 entrambe le piattaforme (Markdown, con eventuale intestazione YAML):
 
 - `progetto.md`:
