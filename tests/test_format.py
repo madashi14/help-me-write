@@ -334,3 +334,21 @@ def test_first_line_indent_not_on_title_page_tables_centered(tmp_path):
     assert first_line["FRONTESPIZIO"] == 0 and first_line["figura"] == 0
     assert out.tables[0].cell(0, 0).paragraphs[0].paragraph_format.first_line_indent == 0
     assert first_line["corpo"] is None  # inherits the indent from Normal
+
+
+
+def test_picture_paragraph_gets_auto_line_spacing(tmp_path):
+    from docx.shared import Cm
+    from fixtures.builders import write_png
+    src = write_docx(tmp_path / "in.docx", ["prima"])
+    d = Document(src)
+    d.add_picture(str(write_png(tmp_path / "fig.png", 50, 50)), width=Cm(8))
+    d.add_paragraph("dopo")
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    picture = next(p for p in out.paragraphs if p._p.xpath(".//w:drawing"))
+    spacing = picture._p.find(f"{{{W}}}pPr/{{{W}}}spacing")
+    assert spacing.get(f"{{{W}}}line") == "240" and spacing.get(f"{{{W}}}lineRule") == "auto"
+    plain = next(p for p in out.paragraphs if p.text == "dopo")
+    assert plain._p.find(f"{{{W}}}pPr/{{{W}}}spacing") is None

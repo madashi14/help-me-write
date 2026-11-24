@@ -31,8 +31,8 @@ def test_render_workdir_with_spaces_and_accents_keeps_no_profile(tmp_path):
     src = write_docx(tmp_path / "a.docx", italian_paragraphs(1))
     work = tmp_path / "lavoro è qui"
     pdf = render_pdf(src, work)
-    assert pdf == work / "a.pdf" and pdf.exists()
-    assert [p.name for p in work.iterdir()] == ["a.pdf"]  # temporary profile removed
+    assert pdf.name == "a.pdf" and pdf.exists() and pdf.parent.parent == work
+    assert list(work.iterdir()) == [pdf.parent]  # temporary profile removed
 
 
 def test_render_tex_without_latexmk_reports_missing_tool(tmp_path, monkeypatch):
@@ -75,3 +75,36 @@ def test_render_reports_soffice_failure(tmp_path, monkeypatch):
     with pytest.raises(RenderError) as e:
         render_pdf(src, tmp_path / "w")
     assert e.value.missing_tool is None and "boom" in str(e.value)
+
+
+@needs_soffice
+def test_render_never_touches_files_in_workdir(tmp_path):
+    src = write_docx(tmp_path / "Relazione.docx", italian_paragraphs(1))
+    own = tmp_path / "Relazione.pdf"
+    own.write_bytes(b"%PDF-1.4 the student's own export")
+    pdf = render_pdf(src, tmp_path)
+    assert own.read_bytes() == b"%PDF-1.4 the student's own export"
+    assert pdf != own and pdf.parent.parent == tmp_path
+
+
+def test_render_tex_into_fresh_subfolder(tmp_path, monkeypatch):
+    import subprocess
+
+    calls = []
+
+    def fake_run(cmd, cwd=None, **kwargs):
+        calls.append((cmd, cwd))
+        outdir = Path(next(c for c in cmd if c.startswith("-outdir=")).split("=", 1)[1])
+        (outdir / "main.pdf").write_bytes(b"%PDF-1.4")
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/latexmk")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    tex = tmp_path / "main.tex"
+    tex.write_text("\\documentclass{article}", encoding="utf-8")
+    (tmp_path / "main.pdf").write_bytes(b"own")
+    pdf = render_pdf(tex, tmp_path)
+    assert (tmp_path / "main.pdf").read_bytes() == b"own"
+    assert pdf.parent.parent == tmp_path and pdf.read_bytes() == b"%PDF-1.4"
+    cmd, cwd = calls[0]
+    assert cmd[:3] == ["/usr/bin/latexmk", "-pdf", "-interaction=nonstopmode"] and cwd == tmp_path

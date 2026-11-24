@@ -2,11 +2,12 @@ import json
 import statistics
 
 import docx
+import pdfplumber
 import pytest
 from docx.enum.text import WD_BREAK
 
 from conftest import FIX
-from fixtures.builders import italian_paragraphs, write_docx
+from fixtures.builders import italian_paragraphs, write_docx, write_png
 from helpmewrite import cli, render
 from helpmewrite.layout import apply_layout, compute_layout
 from helpmewrite.measure import (
@@ -41,9 +42,12 @@ def test_layout_meets_unibo_rules_after_measure(tmp_path, font):
 @needs_soffice
 def test_bad_layout_is_flagged(tmp_path):
     src = write_docx(tmp_path / "bad.docx", italian_paragraphs(30), font="Calibri", size_pt=11, margins_cm=1.5)
-    by = {c.rule: c for c in measure(src, load_rules(FIX / "linee-guida-unibo.yaml"), tmp_path / "w").checks}
+    m = measure(src, load_rules(FIX / "linee-guida-unibo.yaml"), tmp_path / "w")
+    by = {c.rule: c for c in m.checks}
     assert not by["font_family"].ok and not by["font_size"].ok and not by["chars_per_line"].ok
-    assert "7" in by["chars_per_line"].detail or "8" in by["chars_per_line"].detail   # ~80+ caratteri
+    measured = [p.chars_per_full_line for p in m.pages if p.number != 1 and p.is_full]
+    assert measured and statistics.median(measured) > 70   # ~80+ caratteri
+    assert by["chars_per_line"].pages == [p.number for p in m.pages if p.number != 1 and p.is_full]
 
 
 def _report_with_sections(path, intro_paragraphs, conclusion_paragraphs):
@@ -200,9 +204,22 @@ def test_check_rules_font_family_tolerates_five_percent():
     assert by["font_family"].ok, by["font_family"].detail
 
 
-def test_check_rules_no_full_pages_is_not_evaluated():
-    by = {c.rule: c for c in check_rules([page(1, full=False)], [], unibo_without_sections())}
-    assert by["chars_per_line"].ok and "not evaluated" in by["chars_per_line"].detail
+def test_check_rules_nothing_to_evaluate_is_not_ok():
+    pages = [page(1, full=False), page(2, full=False), page(3, chars=None)]
+    by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
+    assert not by["chars_per_line"].ok and "could not evaluate" in by["chars_per_line"].detail
+    assert "1 (title page)" in by["chars_per_line"].detail
+    assert "2 (not a full page" in by["chars_per_line"].detail
+    assert "3 (no full-width lines)" in by["chars_per_line"].detail
+    assert by["lines_per_page"].ok  # page 3 is full: its body lines count
+
+
+def test_check_rules_detail_names_skipped_pages():
+    pages = good_pages()
+    pages[5] = page(6, lines=20, full=False)
+    by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
+    assert by["lines_per_page"].ok
+    assert "not evaluated: 1 (title page); 6 (not a full page" in by["lines_per_page"].detail
 
 
 def test_check_rules_sections():
@@ -270,3 +287,69 @@ def test_section_spans_heading_on_page_one_without_title_page():
                 {"text": "Conclusione", "heading_level": 1}]
     spans = [(s.title, s.start_page, s.end_page) for s in section_spans(pages, headings)]
     assert spans == [("Introduzione", 1, 2), ("Conclusione", 3, 3)]
+
+
+
+def _docx_with(path, before, insert, after, **fmt):
+    """A docx with paragraphs `before`, then insert(document), then paragraphs `after`."""
+    raw = write_docx(path, before, **fmt)
+    d = docx.Document(str(raw))
+    insert(d)
+    for text in after:
+        d.add_paragraph(text)
+    d.save(str(raw))
+    return raw
+
+
+@needs_soffice
+def test_wide_table_does_not_void_chars_per_line(tmp_path):
+    def table(d):
+        t = d.add_table(rows=3, cols=3)  # as wide as the 1.5 cm margins: overflows the layout
+        for i, row in enumerate(t.rows):
+            for j, cell in enumerate(row.cells):
+                cell.text = f"cella {i} {j}"
+
+    paras = italian_paragraphs(40)
+    raw = _docx_with(tmp_path / "raw.docx", paras[:20], table, paras[20:])
+    apply_layout(raw, compute_layout(load_rules(UNIBO), "Times New Roman"), tmp_path / "out.docx")
+    m = measure(tmp_path / "out.docx", load_rules(UNIBO), tmp_path / "w")
+    by = {c.rule: c for c in m.checks}
+    assert by["chars_per_line"].ok, by["chars_per_line"].detail
+    full = [p for p in m.pages if p.number != 1 and p.is_full]
+    assert len(full) >= m.page_count - 3
+    assert all(60 <= p.chars_per_full_line <= 70 for p in full)
+
+
+@needs_soffice
+@pytest.mark.parametrize("before", [5, 8])  # figure inside a page / pushed to the next page
+def test_figure_pages_are_not_full(tmp_path, before):
+    from docx.shared import Cm
+
+    png = write_png(tmp_path / "fig.png", 200, 200)
+    paras = italian_paragraphs(30)
+    src = _docx_with(tmp_path / "fig.docx", paras[:before],
+                     lambda d: d.add_picture(str(png), width=Cm(10)), paras[before:],
+                     font="Times New Roman", size_pt=12, margins_cm=2.5, line_spacing=1.5)
+    pdf = render_pdf(src, tmp_path / "pdf")
+    with pdfplumber.open(str(pdf)) as doc:
+        figure_page = next(i for i, p in enumerate(doc.pages, start=1) if p.images)
+    m = measure(pdf, load_rules(UNIBO), tmp_path / "w")
+    by = {c.rule: c for c in m.checks}
+    lines = {p.number: p.body_lines for p in m.pages}
+    if before == 8:  # the figure did not fit: the page before it ends early
+        assert lines[figure_page - 1] <= max(lines.values()) - 4
+    for n in (figure_page - 1, figure_page):
+        if n > 1:
+            assert not m.pages[n - 1].is_full, (n, lines)
+            assert n not in by["lines_per_page"].pages, by["lines_per_page"].detail
+
+
+@needs_soffice
+def test_measure_leaves_existing_pdf_in_workdir(tmp_path):
+    src = write_docx(tmp_path / "Relazione.docx", italian_paragraphs(3))
+    own = tmp_path / "Relazione.pdf"
+    own.write_bytes(b"%PDF-1.4 the student's own export")
+    assert cli.main(["measure", str(src), "--rules", str(UNIBO), "--workdir", str(tmp_path),
+                     "-o", str(tmp_path / "m.json")]) == 1
+    assert own.read_bytes() == b"%PDF-1.4 the student's own export"
+    assert json.loads((tmp_path / "m.json").read_text(encoding="utf-8"))["pdf"] != str(own)

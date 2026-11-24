@@ -79,19 +79,22 @@ def _run(cmd, cwd=None):
         raise RenderError(f"{Path(cmd[0]).name} did not finish within {TIMEOUT_S} s")
 
 
+def _fresh_outdir(workdir: Path) -> Path:
+    """A new, empty subfolder: files already in workdir are never overwritten or mistaken."""
+    return Path(tempfile.mkdtemp(prefix="pdf-", dir=workdir))
+
+
 def _render_docx(src: Path, workdir: Path, soffice: str) -> Path:
-    stale = _find_output(workdir, src.stem)
-    if stale is not None:
-        stale.unlink()  # never mistake a previous run's PDF for this one
+    outdir = _fresh_outdir(workdir)
     profile = Path(tempfile.mkdtemp(prefix="lo-profile-", dir=workdir))
     try:
-        proc = _run(soffice_command(src.absolute(), workdir.absolute(), profile, soffice))
+        proc = _run(soffice_command(src.absolute(), outdir.absolute(), profile, soffice))
     except OSError as exc:
         raise RenderError(f"cannot start LibreOffice ({exc}). {_INSTALL_HINT['soffice']}",
                           missing_tool="soffice")
     finally:
         shutil.rmtree(profile, ignore_errors=True)
-    pdf = _find_output(workdir, src.stem)
+    pdf = _find_output(outdir, src.stem)
     if proc.returncode != 0 or pdf is None:
         raise RenderError(f"LibreOffice could not convert {src.name} to PDF "
                           f"(exit code {proc.returncode}): {_excerpt(proc)}")
@@ -99,13 +102,14 @@ def _render_docx(src: Path, workdir: Path, soffice: str) -> Path:
 
 
 def _render_tex(src: Path, workdir: Path, latexmk: str) -> Path:
-    cmd = [latexmk, "-pdf", "-interaction=nonstopmode", f"-outdir={workdir.absolute()}", src.name]
+    outdir = _fresh_outdir(workdir)
+    cmd = [latexmk, "-pdf", "-interaction=nonstopmode", f"-outdir={outdir.absolute()}", src.name]
     try:
         proc = _run(cmd, cwd=src.parent)
     except OSError as exc:
         raise RenderError(f"cannot start latexmk ({exc}). {_INSTALL_HINT['latexmk']}",
                           missing_tool="latexmk")
-    pdf = _find_output(workdir, src.stem)
+    pdf = _find_output(outdir, src.stem)
     if proc.returncode != 0 or pdf is None:
         raise RenderError(f"latexmk could not compile {src.name} "
                           f"(exit code {proc.returncode}): {_excerpt(proc)}")
@@ -115,7 +119,9 @@ def _render_tex(src: Path, workdir: Path, latexmk: str) -> Path:
 def render_pdf(src, workdir) -> Path:
     """Return a PDF of src: a .pdf as is, a .docx via LibreOffice, a .tex via latexmk.
 
-    Output and the temporary LibreOffice profile go into workdir (created if needed).
+    The PDF (with latexmk's auxiliary files) goes into a new subfolder of workdir (created if
+    needed), so files already in workdir are never touched; the temporary LibreOffice
+    profile is created in workdir and removed afterwards.
     Raises RenderError; its missing_tool is set when an external tool is not installed.
     """
     src, workdir = Path(src), Path(workdir)

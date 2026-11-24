@@ -218,6 +218,22 @@ def _strip_direct_overrides(body, protected) -> int:
 FIRST_LINE_INDENT_CM = 1.0
 
 
+def _auto_spacing_for_pictures(body) -> int:
+    """Single line spacing on paragraphs holding a picture or object (w:drawing, w:pict,
+    w:object): with the style's exact spacing they would be clipped to one line."""
+    count = 0
+    for p in body.iter(_q("p")):
+        if next(p.iter(_q("drawing"), _q("pict"), _q("object")), None) is None:
+            continue
+        spacing = p.get_or_add_pPr().get_or_add_spacing()
+        if spacing.get(_q("line")) is not None:
+            continue  # the paragraph's own line spacing (kept on the title page)
+        spacing.set(_q("line"), "240")
+        spacing.set(_q("lineRule"), "auto")
+        count += 1
+    return count
+
+
 def _zero_paragraph_spacing(ppr):
     """Spacing before/after 0 on a pPr (style or document defaults); line spacing untouched."""
     spacing = ppr.get_or_add_spacing()
@@ -400,6 +416,10 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
     removed = _strip_direct_overrides(body, protected)
     if removed:
         changes.append(f"removed {removed} direct font/size/line-spacing override(s) from the body")
+    pictures = _auto_spacing_for_pictures(body)
+    if pictures:
+        changes.append(f"single line spacing on {pictures} paragraph(s) holding a picture or "
+                       "object (exact spacing would clip them)")
 
     added = _number_footers(document)
     if added:

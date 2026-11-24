@@ -6,19 +6,30 @@ page numbers and section lengths. Algorithm:
   top is within 2 pt; its text is the words joined by single spaces;
 - the body size is the most frequent size, weighted by characters; body lines are within
   0.6 pt of it and outside the header/footer bands (top and bottom 7% of the page);
-- a full line is at least 90% as wide as the widest body line of the document;
-- a full page has body lines spanning at least 75% of the mean span over pages with text;
+- a full line is 90-110% as wide as the reference width (see 4. below);
+- a full page has body lines spanning at least 75% of the typical span (see 5. below);
 - lines and characters per line are checked on full pages only, never on page 1 (title
-  page); page numbers are checked on every page but page 1.
+  page); page numbers are checked on every page but page 1. The check details name the
+  pages that were skipped and why; a check that can evaluate no page is not ok.
 
-Departures from the plan's algorithm (accepted by the controller, ruling R6):
+Departures from the plan's algorithm (accepted by the controller, rulings R6 and R7):
 1. the last page is never full: the text ends there, so a page filled 75-95% would
    otherwise fail lines_per_page;
 2. a heading is located on a page with a line that is the whole title (numbering stripped)
    before falling back to "the page text contains the title": table-of-contents entries
    ("Introduzione 3") and mentions in the prose would otherwise win;
 3. page 1 is searched too, as a fallback for whole-line matches only, so a draft without a
-   title page still finds an introduction on page 1.
+   title page still finds an introduction on page 1;
+4. the reference width is the 90th percentile of body-line widths, not the widest line:
+   one line wider than the text area (a table kept at its old width, a long URL) would
+   otherwise leave every prose line short of 90% and void chars_per_line;
+5. a full page must also reach 90% of the typical bottom (the median of the pages' lowest
+   body-line bottoms, without page 1 and the last page) and have no gap between body lines
+   wider than 4 line pitches; the typical span is such a median too, not the mean. Pages
+   that end early (before a figure that did not fit, a page-break heading, footnotes) and
+   pages interrupted by a figure have fewer lines by design and would otherwise fail.
+
+The rule checks live in checks.py; Check and check_rules are re-exported here.
 """
 import re
 import shutil
@@ -29,7 +40,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .fonts import normalize_font
+from .checks import Check, check_rules, heading_key, normalize_text
 from .render import RenderError, render_pdf
 
 LINE_TOP_TOLERANCE_PT = 2.0
@@ -37,15 +48,13 @@ WORD_JOIN_GAP_PT = 0.5      # fragments of one word split by a font change mid-w
 BAND = 0.07                 # header and footer bands: top and bottom 7% of the page
 BODY_SIZE_TOLERANCE_PT = 0.6
 FULL_LINE_RATIO = 0.90
+FULL_LINE_MAX_RATIO = 1.10  # wider than the text area: a table or an overflowing URL
 FULL_PAGE_RATIO = 0.75
-FONT_SHARE = 0.95
-FONT_SIZE_TOLERANCE_PT = 0.5
-MAX_LISTED_PAGES = 5
+FULL_PAGE_BOTTOM_RATIO = 0.90
+MAX_GAP_PITCHES = 4.0       # a wider gap between body lines is a figure or a table
 
 _PAGE_NUMBER = re.compile(r"^\W*\d+\W*$|^(pag\.?|pagina|page)\s*\d+", re.IGNORECASE)
 _SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
-_NUMBERING = re.compile(
-    r"^(?:(?:capitolo|chapter)\s+)?(?:\d+(?:\.\d+)*\.?|\d+\)|[ivxlc]+[.)])\s*[-–—:]?\s+")
 
 
 @dataclass
@@ -66,14 +75,6 @@ class SectionSpan:
     level: int
     start_page: int
     end_page: int
-
-
-@dataclass
-class Check:
-    rule: str
-    ok: bool
-    detail: str
-    pages: list[int]
 
 
 @dataclass
@@ -139,6 +140,20 @@ def _in_band(line: _Line, height: float) -> bool:
     return middle < BAND * height or middle > (1 - BAND) * height
 
 
+def _reference_width(body) -> float:
+    """90th percentile of body-line widths: a few overflowing lines cannot set it."""
+    widths = [line.width for lines in body for line in lines]
+    if len(widths) < 2:
+        return widths[0] if widths else 0.0
+    return statistics.quantiles(widths, n=10, method="inclusive")[-1]
+
+
+def _typical_pitch(body) -> float:
+    """Median distance between consecutive body lines of a page (within a paragraph)."""
+    steps = [b.top - a.top for lines in body for a, b in zip(lines, lines[1:]) if b.top > a.top]
+    return statistics.median(steps) if steps else 0.0
+
+
 def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
     import pdfplumber
 
@@ -155,15 +170,28 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
                 and abs(line.size - body_size_pt) <= BODY_SIZE_TOLERANCE_PT)
 
     body = [[line for line in lines if is_body(line, height)] for height, lines in raw]
-    widest = max((line.width for lines in body for line in lines), default=0.0)
-    spans = [lines[-1].bottom - lines[0].top for lines in body if lines]
-    mean_span = statistics.mean(spans) if spans else 0.0
+    reference = _reference_width(body)
+    # typical page: neither the title page nor the last page, which is short by design
+    typical = ([lines for lines in body[1:-1] if lines] or [lines for lines in body[1:] if lines]
+               or [lines for lines in body if lines])
+    typical_bottom = statistics.median(lines[-1].bottom for lines in typical) if typical else 0.0
+    typical_span = (statistics.median(lines[-1].bottom - lines[0].top for lines in typical)
+                    if typical else 0.0)
+    max_gap = MAX_GAP_PITCHES * _typical_pitch(body)
+
+    def is_full(body_lines, number):
+        if not body_lines or number == len(raw):  # the text ends on the last page
+            return False
+        gaps = [b.top - a.top for a, b in zip(body_lines, body_lines[1:])]
+        return (body_lines[-1].bottom >= FULL_PAGE_BOTTOM_RATIO * typical_bottom
+                and body_lines[-1].bottom - body_lines[0].top >= FULL_PAGE_RATIO * typical_span
+                and max(gaps, default=0.0) <= max_gap)
 
     pages = []
     for number, ((height, lines), body_lines) in enumerate(zip(raw, body), start=1):
-        full = [len(line.text) for line in body_lines if line.width >= FULL_LINE_RATIO * widest]
+        full = [len(line.text) for line in body_lines
+                if FULL_LINE_RATIO * reference <= line.width <= FULL_LINE_MAX_RATIO * reference]
         fonts = sum((line.fonts for line in body_lines), Counter())
-        span = body_lines[-1].bottom - body_lines[0].top if body_lines else 0.0
         pages.append(PageStats(
             number=number,
             body_lines=len(body_lines),
@@ -172,23 +200,13 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
             body_size_pt=body_size_pt if body_lines else None,
             has_page_number=any(_in_band(line, height) and _PAGE_NUMBER.match(line.text)
                                 for line in lines),
-            is_full=(bool(body_lines) and span >= FULL_PAGE_RATIO * mean_span
-                     and number < len(raw)),  # the text ends on the last page
+            is_full=is_full(body_lines, number),
             text="\n".join(line.text for line in lines),
         ))
     return pages
 
 
 # --- sections ----------------------------------------------------------------------------
-
-def _norm(text: str) -> str:
-    return " ".join(text.split()).casefold()
-
-
-def _heading_key(text: str) -> str:
-    """Normalized heading text without leading numbering ("1.2 ", "Capitolo 3 - ", "IV. ")."""
-    return _NUMBERING.sub("", _norm(text), count=1)
-
 
 def _locate(pages, title: str, first: int) -> int | None:
     """Page of a heading, searching pages >= first, page 1 (title page) only as a fallback.
@@ -198,15 +216,15 @@ def _locate(pages, title: str, first: int) -> int | None:
     Preferring a whole line skips table-of-contents entries ("Introduzione 3") and
     mentions in the prose that come before the heading itself.
     """
-    key = _heading_key(title)
+    key = heading_key(title)
     pattern = re.compile(r"(?<!\w)" + re.escape(key) + r"(?!\w)")
     after_title_page = [p for p in pages if p.number >= max(first, 2)]
     title_page = [p for p in pages if p.number == 1] if first == 1 else []
     for p in after_title_page + title_page:
-        if any(_heading_key(line) == key for line in p.text.splitlines()):
+        if any(heading_key(line) == key for line in p.text.splitlines()):
             return p.number
     for p in after_title_page:
-        if pattern.search(_norm(p.text)):
+        if pattern.search(normalize_text(p.text)):
             return p.number
     return None
 
@@ -221,7 +239,7 @@ def section_spans(pages: list[PageStats], headings: list[dict]) -> list[SectionS
     located, first = [], 1
     for h in headings:
         title, level = " ".join((h.get("text") or "").split()), h.get("heading_level")
-        if not title or level is None or not _heading_key(title):
+        if not title or level is None or not heading_key(title):
             continue
         start = _locate(pages, title, first)
         if start is not None:
@@ -234,170 +252,6 @@ def section_spans(pages: list[PageStats], headings: list[dict]) -> list[SectionS
         end = last if following is None else max(start, following - 1)
         spans.append(SectionSpan(title, level, start, end))
     return spans
-
-
-# --- rules -------------------------------------------------------------------------------
-
-def _num(value) -> str:
-    return f"{round(value, 1):g}"
-
-
-def _allowed(rng) -> str:
-    if rng.min is not None and rng.max is not None:
-        return f"allowed {_num(rng.min)}–{_num(rng.max)}"
-    if rng.min is not None:
-        return f"minimum {_num(rng.min)}"
-    return f"maximum {_num(rng.max)}"
-
-
-def _in_range(value, rng) -> bool:
-    return (rng.min is None or value >= rng.min) and (rng.max is None or value <= rng.max)
-
-
-def _page_list(numbers) -> str:
-    """[2, 3, 4, 7] -> '2–4, 7'."""
-    runs = []
-    for n in sorted(numbers):
-        if runs and n == runs[-1][-1] + 1:
-            runs[-1].append(n)
-        else:
-            runs.append([n])
-    return ", ".join(str(r[0]) if len(r) == 1 else f"{r[0]}–{r[-1]}" for r in runs)
-
-
-def _pages(n) -> str:
-    return f"{n} page{'s' if n != 1 else ''}"
-
-
-def _per_page(rule, pages, rng, value, unit) -> Check:
-    evaluated = [p for p in pages if p.number != 1 and p.is_full and value(p) is not None]
-    if not evaluated:
-        return Check(rule, True, f"not evaluated: no full text page after page 1 "
-                                 f"({_allowed(rng)})", [])
-    bad = [p for p in evaluated if not _in_range(value(p), rng)]
-    if bad:
-        parts = [f"page {p.number}: {_num(value(p))} {unit}" for p in bad[:MAX_LISTED_PAGES]]
-        if len(bad) > MAX_LISTED_PAGES:
-            parts.append(f"and {len(bad) - MAX_LISTED_PAGES} more pages")
-        return Check(rule, False, "; ".join(parts) + f" ({_allowed(rng)})",
-                     [p.number for p in bad])
-    values = [value(p) for p in evaluated]
-    lo, hi = min(values), max(values)
-    amount = _num(lo) if lo == hi else f"{_num(lo)}–{_num(hi)}"
-    return Check(rule, True, f"{amount} {unit} on full pages "
-                             f"{_page_list(p.number for p in evaluated)} ({_allowed(rng)})", [])
-
-
-def _allowed_share(font_chars, allowed) -> float:
-    chars = sum(font_chars.values())
-    good = sum(n for name, n in font_chars.items() if normalize_font(name) in allowed)
-    return good / chars if chars else 1.0
-
-
-def _font_family(pages, fonts) -> Check:
-    total = sum((Counter(p.font_chars) for p in pages), Counter())
-    if not total:
-        return Check("font_family", False, "no body text found in the PDF", [])
-    allowed = {normalize_font(f) for f in fonts} - {None}
-    share = _allowed_share(total, allowed)
-    chars = sum(total.values())
-    used = ", ".join(f"{name} {n / chars:.0%}" for name, n in total.most_common(4))
-    detail = (f"{share:.0%} of body text in allowed fonts (required {FONT_SHARE:.0%}); "
-              f"fonts in the PDF: {used}; allowed: {', '.join(fonts)}")
-    if share >= FONT_SHARE:
-        return Check("font_family", True, detail, [])
-    return Check("font_family", False, detail, [
-        p.number for p in pages if _allowed_share(p.font_chars, allowed) < FONT_SHARE])
-
-
-def _font_size(pages, target) -> Check:
-    weights = Counter()
-    for p in pages:
-        if p.body_size_pt is not None:
-            weights[p.body_size_pt] += sum(p.font_chars.values())
-    if not weights:
-        return Check("font_size", False, "no body text found in the PDF", [])
-    size = weights.most_common(1)[0][0]
-    ok = abs(size - target) <= FONT_SIZE_TOLERANCE_PT
-    return Check("font_size", ok, f"body text {_num(size)} pt (required {_num(target)} pt)", [])
-
-
-def _page_numbers(pages) -> Check:
-    evaluated = [p for p in pages if p.number != 1]
-    if not evaluated:
-        return Check("page_numbers", True, "not evaluated: the document has only page 1", [])
-    missing = [p.number for p in evaluated if not p.has_page_number]
-    if missing:
-        return Check("page_numbers", False,
-                     f"no page number on pages {_page_list(missing)} (looked for a number alone, "
-                     "or 'pag./pagina/page N', in the top or bottom 7% of the page)", missing)
-    return Check("page_numbers", True,
-                 f"page number found on pages {_page_list(p.number for p in evaluated)}", [])
-
-
-def _heading_matches(title: str, names) -> bool:
-    key = _heading_key(title)
-    return any(re.match(re.escape(_norm(n)) + r"(?!\w)", key) for n in names)
-
-
-def _section_checks(spans, section_rules) -> list[Check]:
-    """Sections without headings (title page, body) are identified by position: not checked.
-
-    spans is None when the source has no readable headings (.tex, .pdf): every required
-    section with headings is then reported as not determined (ok=False), to check by hand.
-    """
-    checks = []
-    for rule in section_rules:
-        if not rule.headings:
-            continue
-        rid = f"section:{rule.name}"
-        names = " or ".join(f"'{n}'" for n in rule.headings)
-        if spans is None:
-            if rule.required:
-                checks.append(Check(f"{rid}:present", False,
-                                    "cannot determine sections: headings are read only from .docx "
-                                    f"documents; check by hand for a heading {names}", []))
-            continue
-        span = next((s for s in spans if _heading_matches(s.title, rule.headings)), None)
-        if span is None:
-            kind = "required" if rule.required else "optional"
-            checks.append(Check(f"{rid}:present", not rule.required,
-                                f"no heading {names} among the document's headings ({kind})",
-                                []))
-            continue
-        checks.append(Check(f"{rid}:present", True,
-                            f"heading '{span.title}' on page {span.start_page}", [span.start_page]))
-        if rule.pages is not None:
-            n = span.end_page - span.start_page + 1
-            checks.append(Check(
-                f"{rid}:pages", _in_range(n, rule.pages),
-                f"'{span.title}': {_pages(n)} "
-                f"(pages {span.start_page}–{span.end_page}; {_allowed(rule.pages)})",
-                list(range(span.start_page, span.end_page + 1))))
-    return checks
-
-
-def check_rules(m_pages, sections, rules) -> list[Check]:
-    """One Check per rule present in the guidelines; sections=None means headings unknown."""
-    checks = []
-    if rules.pages is not None:
-        n = len(m_pages)
-        checks.append(Check("pages", _in_range(n, rules.pages),
-                            f"{_pages(n)} ({_allowed(rules.pages)})", []))
-    if rules.fonts:
-        checks.append(_font_family(m_pages, rules.fonts))
-    if rules.font_size_pt is not None:
-        checks.append(_font_size(m_pages, rules.font_size_pt))
-    if rules.lines_per_page is not None:
-        checks.append(_per_page("lines_per_page", m_pages, rules.lines_per_page,
-                                lambda p: p.body_lines, "body lines"))
-    if rules.chars_per_line is not None:
-        checks.append(_per_page("chars_per_line", m_pages, rules.chars_per_line,
-                                lambda p: p.chars_per_full_line, "chars per full line"))
-    if rules.page_numbers:
-        checks.append(_page_numbers(m_pages))
-    checks.extend(_section_checks(sections, rules.sections))
-    return checks
 
 
 def measure(doc, rules, workdir) -> Measurement:

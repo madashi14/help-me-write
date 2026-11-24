@@ -35,3 +35,20 @@ def write_docx(path, paragraphs, font="Calibri", size_pt=11, margins_cm=1.5,
             document.add_paragraph(item)
     document.save(str(path))
     return path
+
+
+def write_png(path, width=100, height=100) -> Path:
+    """A plain grey 8-bit grayscale PNG, written without image libraries."""
+    import struct
+    import zlib
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+    raw = b"".join(b"\x00" + b"\x80" * width for _ in range(height))
+    path = Path(path)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return path
