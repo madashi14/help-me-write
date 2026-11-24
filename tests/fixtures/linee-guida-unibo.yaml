@@ -1,0 +1,36 @@
+document_type: relazione-tirocinio
+language: it
+format: null
+source: docs/riferimenti/Facsimile_relazione_di_fine_tirocinio.docx
+pages: {min: 10, max: 30}
+fonts: [Times New Roman, Courier, Helvetica]
+font_size_pt: 12
+lines_per_page: {min: 30, max: 35}
+chars_per_line: {min: 60, max: 70}
+page_numbers: true
+sections:
+  - name: frontespizio
+    required: true
+    headings: []
+  - name: indice
+    required: true
+    headings: [indice, sommario]
+  - name: introduzione
+    required: true
+    headings: [introduzione]
+    pages: {min: 1, max: 2}
+  - name: corpo
+    required: true
+    headings: []
+  - name: conclusione
+    required: true
+    headings: [conclusione, conclusioni]
+    pages: {min: 1, max: 2}
+  - name: allegati
+    required: false
+    headings: [allegati, appendice]
+content_rules:
+  - La relazione deve essere presentata sotto forma di diario dell'esperienza di tirocinio, discutendo nei dettagli il contesto delle attività svolte e il coinvolgimento dello studente.
+  - Non deve essere una presentazione ma il resoconto organico delle attività svolte che metta il più possibile in evidenza il contributo individuale e personale dello studente.
+  - La relazione deve mettere in evidenza la eventuale originalità del contributo dello studente, soprattutto nel caso di tirocinio svolto nell'ambito di un corso di laurea magistrale.
+title_page_template: docs/riferimenti/Facsimile_relazione_di_fine_tirocinio.docx
