@@ -514,8 +514,8 @@ def test_track_command_usage_errors(tmp_path, capsys):
     invalid = _edits_file(tmp_path / "invalid.json", {"paragraph": 0, "find": "x"})
     corrupt = tmp_path / "corrupt.docx"
     corrupt.write_bytes(b"not a zip")
-    tex = tmp_path / "main.tex"
-    tex.write_text("\\documentclass{article}", encoding="utf-8")
+    tex = tmp_path / "notes.txt"
+    tex.write_text("plain", encoding="utf-8")
     out = str(tmp_path / "b.docx")
     digest = sha(src)
     cases = [

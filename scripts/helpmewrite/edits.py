@@ -197,10 +197,10 @@ def _overlap(span, edit, other_span, other) -> bool:
 
 
 def add_track_arguments(parser):
-    parser.add_argument("document", help="document to correct (.docx); never modified")
+    parser.add_argument("document", help="document to correct (.docx, or the main .tex); never modified")
     parser.add_argument("--edits", action="append", required=True,
                         help="EditSet JSON; repeat to merge the edits of several reviewers")
-    parser.add_argument("-o", "--output", required=True, help="corrected copy to write")
+    parser.add_argument("-o", "--output", required=True, help="corrected copy to write (for .tex: a new project folder)")
 
 
 def _error(message) -> int:
@@ -218,8 +218,9 @@ def run_track(args) -> int:
         return 2
     if any(Path(e).resolve() == output.resolve() for e in args.edits):
         return _error(f"output would overwrite an edits file: {output}")
-    if source.suffix.lower() != ".docx":
-        return _error(f"unsupported format '{source.suffix}' for track (use .docx)")
+    suffix = source.suffix.lower()
+    if suffix not in (".docx", ".tex"):
+        return _error(f"unsupported format '{source.suffix}' for track (use .docx or .tex)")
     sets, invalid = [], False
     for path in args.edits:
         try:
@@ -232,25 +233,36 @@ def run_track(args) -> int:
     if invalid:
         return 2
 
-    import docx
-
-    from . import track_docx
-    from .extract import iter_body_paragraphs, visible_text
+    from . import track_docx, track_tex
+    from .extract import extract_tex, iter_body_paragraphs, visible_text
 
     try:
-        paragraphs = iter_body_paragraphs(docx.Document(str(source)))
-        texts = {i: visible_text(p) for i, p in enumerate(paragraphs)}
-        merged, conflicts = merge_edits(*sets, texts=texts)
-        result = track_docx.apply_edits_docx(source, merged, output)
+        if suffix == ".tex":
+            texts = {(p["file"], p["line"]): p["text"] for p in extract_tex(source)}
+            merged, conflicts = merge_edits(*sets, texts=texts)
+            result = track_tex.apply_edits_tex(source, merged, output)
+        else:
+            import docx
+
+            paragraphs = iter_body_paragraphs(docx.Document(str(source)))
+            texts = {i: visible_text(p) for i, p in enumerate(paragraphs)}
+            merged, conflicts = merge_edits(*sets, texts=texts)
+            result = track_docx.apply_edits_docx(source, merged, output)
+    except EditsError as exc:
+        return _error("; ".join(exc.problems))
     except Exception as exc:  # unreadable/not a docx, unwritable destination
         return _error(f"cannot apply edits to {source.name}: {exc!r}")
     failed = [dict(f, edit=edit_to_dict(merged.edits[f["index"]])) for f in result.failed]
     data = {"applied": result.applied, "failed": failed, "conflicts": conflicts}
+    if result.notes:
+        data["notes"] = result.notes
     lines = [f"wrote {output}: {len(result.applied)} applied, {len(failed)} failed, "
              f"{len(conflicts)} conflicts"]
     for f in failed:
         lines.append(f"- failed [{f['index']}] {_where(location(merged.edits[f['index']]))} "
                      f"{f['edit']['find']!r}: {f['reason']}")
+    for note in result.notes:
+        lines.append(f"- note: {note}")
     for c in conflicts:
         lines.append(f"- conflict {c['edit']['find']!r}: {c['reason']}")
     cli.emit(data, argparse.Namespace(json=args.json, output=None), text="\n".join(lines))

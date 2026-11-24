@@ -1,3 +1,4 @@
+import shutil
 import sys
 from pathlib import Path
 
@@ -24,9 +25,13 @@ def fix():
 def pytest_collection_modifyitems(config, items):
     from helpmewrite import render
 
-    if render.find_soffice() is not None:
-        return
-    skip = pytest.mark.skip(reason="LibreOffice (soffice) not installed")
-    for item in items:
-        if "needs_soffice" in item.keywords:
-            item.add_marker(skip)
+    if render.find_soffice() is None:
+        skip = pytest.mark.skip(reason="LibreOffice (soffice) not installed")
+        for item in items:
+            if "needs_soffice" in item.keywords:
+                item.add_marker(skip)
+    if not (shutil.which("latexmk") and shutil.which("latexdiff")):
+        skip = pytest.mark.skip(reason="latexmk/latexdiff not installed")
+        for item in items:
+            if "needs_latex" in item.keywords:
+                item.add_marker(skip)

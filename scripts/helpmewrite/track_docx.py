@@ -54,6 +54,7 @@ _ALL_IDS = etree.XPath("//@w:id", namespaces={"w": W})
 class ApplyResult:
     applied: list[int] = field(default_factory=list)
     failed: list[dict] = field(default_factory=list)  # {"index", "reason"}
+    notes: list[str] = field(default_factory=list)  # e.g. a file read as latin-1 (tex)
 
 
 class _Refused(Exception):
