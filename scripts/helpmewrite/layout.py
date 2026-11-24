@@ -136,17 +136,6 @@ def _is_heading(style) -> bool:
     return bool(_HEADING_RE.match(style.name or "") or _HEADING_RE.match(style.style_id or ""))
 
 
-def _based_on_normal(style) -> bool:
-    seen = set()
-    cur = style.base_style
-    while cur is not None and cur.style_id not in seen:
-        if cur.style_id == "Normal":
-            return True
-        seen.add(cur.style_id)
-        cur = cur.base_style
-    return False
-
-
 def _set_style_font(style, font_name):
     rpr = style.element.get_or_add_rPr()
     rfonts = rpr.find(_q("rFonts"))
@@ -168,43 +157,109 @@ def _set_exact_spacing(style, pitch_pt):
     spacing.set(_q("lineRule"), "exact")
 
 
-def _strip_direct_overrides(element) -> int:
-    """Remove direct font/size/line-spacing overrides under element; return how many."""
+TITLE_PAGE_MAX_PARAGRAPHS = 40
+_PROTECTED_STYLE_RE = re.compile(r"^(title|subtitle|titolo|sottotitolo)$", re.IGNORECASE)
+
+
+def _in_textbox(el) -> bool:
+    return any(a.tag == _q("txbxContent") for a in el.iterancestors())
+
+
+def _has_page_break(p) -> bool:
+    return any(br.get(_q("type")) == "page" and not _in_textbox(br) for br in p.iter(_q("br"))) \
+        or p.find(f"{_q('pPr')}/{_q('sectPr')}") is not None
+
+
+def _title_page_paragraphs(body) -> set:
+    """Paragraphs treated as title page (direct formatting kept).
+
+    Paragraphs in text boxes (w:txbxContent, and the paragraphs hosting them), plus every
+    body paragraph before the first explicit page break (w:br type=page, pageBreakBefore) or
+    section break (pPr/sectPr), if that break occurs within the first 40 paragraphs.
+    """
+    paragraphs = [p for p in body.iter(_q("p")) if not _in_textbox(p)]
+    protected = {p for p in body.iter(_q("p")) if _in_textbox(p) or p.find(".//" + _q("txbxContent")) is not None}
+    for i, p in enumerate(paragraphs[:TITLE_PAGE_MAX_PARAGRAPHS]):
+        if p.find(f"{_q('pPr')}/{_q('pageBreakBefore')}") is not None:
+            protected.update(paragraphs[:i])
+            break
+        if _has_page_break(p):
+            protected.update(paragraphs[:i + 1])
+            break
+    return protected
+
+
+def _strip_direct_overrides(body) -> int:
+    """Remove direct font/size/line-spacing overrides from body paragraphs (not title page)."""
     count = 0
-    for rpr in element.iter(_q("rPr")):
-        if rpr.getparent().tag != _q("r"):
-            continue  # leave paragraph-mark properties alone
-        for tag in ("rFonts", "sz", "szCs"):
-            for child in rpr.findall(_q(tag)):
-                rpr.remove(child)
-                count += 1
-    for spacing in list(element.iter(_q("spacing"))):
-        if spacing.getparent().tag != _q("pPr"):
+    protected = _title_page_paragraphs(body)
+    for p in body.iter(_q("p")):
+        if p in protected:
             continue
-        removed = False
-        for attr in ("line", "lineRule"):
-            if _q(attr) in spacing.attrib:
-                del spacing.attrib[_q(attr)]
-                removed = True
-        count += removed
-        if not spacing.attrib:
-            spacing.getparent().remove(spacing)
+        for rpr in p.iter(_q("rPr")):
+            if rpr.getparent().tag != _q("r"):
+                continue  # leave paragraph-mark properties alone
+            for tag in ("rFonts", "sz", "szCs"):
+                for child in rpr.findall(_q(tag)):
+                    rpr.remove(child)
+                    count += 1
+        spacing = p.find(f"{_q('pPr')}/{_q('spacing')}")
+        if spacing is not None:
+            removed = False
+            for attr in ("line", "lineRule"):
+                if _q(attr) in spacing.attrib:
+                    del spacing.attrib[_q(attr)]
+                    removed = True
+            count += removed
+            if not spacing.attrib:
+                spacing.getparent().remove(spacing)
     return count
 
 
-def _footers(section):
-    for footer in (section.footer, section.first_page_footer, section.even_page_footer):
-        if not footer.is_linked_to_previous:
-            yield footer
-
-
-def _has_page_field(document) -> bool:
-    for section in document.sections:
-        for footer in _footers(section):
-            for el in footer._element.iter(_q("fldSimple"), _q("instrText")):
-                if _PAGE_RE.search(el.get(_q("instr"), "") + (el.text or "")):
-                    return True
+def _has_page_field(footer) -> bool:
+    for el in footer._element.iter(_q("fldSimple"), _q("instrText")):
+        if _PAGE_RE.search(el.get(_q("instr"), "") + (el.text or "")):
+            return True
     return False
+
+
+def _chain_reaches_first(document, index, attr) -> bool:
+    """True if section index's footer of this kind is linked all the way back to section 0."""
+    sections = document.sections
+    for k in range(index, 0, -1):
+        if not getattr(sections[k], attr).is_linked_to_previous:
+            return False
+    return True
+
+
+def _number_footers(document) -> int:
+    """Give each page kind of each section a PAGE field; return how many footers changed.
+
+    Linked footers stay linked (they inherit). The first-page footer of the first section
+    (the title page) is left unnumbered.
+    """
+    sections = document.sections
+    even_odd = document.settings.odd_and_even_pages_header_footer
+    added = 0
+    for i, section in enumerate(sections):
+        kinds = ["footer"]
+        if section.different_first_page_header_footer:
+            kinds.append("first_page_footer")
+        if even_odd:
+            kinds.append("even_page_footer")
+        for attr in kinds:
+            if attr == "first_page_footer" and i == 0:
+                continue
+            footer = getattr(section, attr)
+            if footer.is_linked_to_previous:
+                if i > 0 and not (attr != "footer" and _chain_reaches_first(document, i, attr)):
+                    continue
+                footer.is_linked_to_previous = False
+            if _has_page_field(footer):
+                continue
+            _add_page_field(footer)
+            added += 1
+    return added
 
 
 def _add_page_field(footer):
@@ -247,6 +302,8 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
         if style.type != docx.enum.style.WD_STYLE_TYPE.PARAGRAPH:
             continue
         is_normal = style.style_id == "Normal" or (style.name or "").lower() == "normal"
+        if _PROTECTED_STYLE_RE.match(style.name or ""):
+            continue
         if is_normal:
             _set_style_font(style, layout.docx_font)
             style.font.size = Pt(layout.font_size_pt)
@@ -254,22 +311,26 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
         elif _is_heading(style):
             _set_style_font(style, layout.docx_font)
             styled.append(style.name)
-        if layout.line_pitch_pt is not None and (is_normal or _based_on_normal(style)):
+        else:  # inherit font and size from Normal
+            rpr = style.element.rPr
+            if rpr is not None:
+                for tag in ("rFonts", "sz", "szCs"):
+                    for child in rpr.findall(_q(tag)):
+                        rpr.remove(child)
+        if layout.line_pitch_pt is not None:
             _set_exact_spacing(style, layout.line_pitch_pt)
     changes.append(f"font {layout.docx_font} on styles: {', '.join(styled)}; "
                    f"Normal size {layout.font_size_pt:g} pt")
     if layout.line_pitch_pt is not None:
-        changes.append(f"exact line spacing {layout.line_pitch_pt} pt on Normal and styles based on it")
+        changes.append(f"exact line spacing {layout.line_pitch_pt} pt on all paragraph styles except Title/Subtitle")
 
     removed = _strip_direct_overrides(document.element.body)
     if removed:
         changes.append(f"removed {removed} direct font/size/line-spacing override(s) from the body")
 
-    if not _has_page_field(document):
-        for section in document.sections:
-            section.footer.is_linked_to_previous = False
-            _add_page_field(section.footer)
-        changes.append("added a centered page number to the footer")
+    added = _number_footers(document)
+    if added:
+        changes.append(f"added a centered page number to {added} footer(s)")
 
     document.save(str(dst))
     return changes

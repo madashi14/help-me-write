@@ -176,3 +176,122 @@ def test_format_command_bad_inputs(tmp_path):
                      "-o", str(tmp_path / "o.docx")]) == 2
     assert cli.main(["format", str(tmp_path / "nope.docx"), "--layout", str(_layout_file(tmp_path)),
                      "-o", str(tmp_path / "o.docx")]) == 2
+
+
+W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _footer_xml(section, attr="footer"):
+    return getattr(section, attr)._element.xml
+
+
+def _multi_section_doc(path, titlepg=False, even=False):
+    from docx.enum.section import WD_SECTION
+    d = Document()
+    d.add_paragraph("uno")
+    d.sections[0].footer.paragraphs[0].text = "FOOTER TEXT"
+    d.add_section(WD_SECTION.NEW_PAGE)
+    d.add_paragraph("due")
+    d.add_section(WD_SECTION.NEW_PAGE)
+    d.add_paragraph("tre")
+    if titlepg:
+        d.sections[0].different_first_page_header_footer = True
+        d.sections[1].different_first_page_header_footer = True
+        d.sections[0].first_page_footer.paragraphs[0].text = "COVER"
+    if even:
+        d.settings.odd_and_even_pages_header_footer = True
+    d.save(path)
+    return path
+
+
+def test_multi_section_linked_footers_keep_content(tmp_path):
+    src = _multi_section_doc(tmp_path / "in.docx")
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    d = Document(tmp_path / "out.docx")
+    assert "FOOTER TEXT" in _footer_xml(d.sections[0]) and "PAGE" in _footer_xml(d.sections[0])
+    assert d.sections[1].footer.is_linked_to_previous
+    assert d.sections[2].footer.is_linked_to_previous
+
+
+def test_title_page_first_footer_unnumbered_others_numbered(tmp_path):
+    src = _multi_section_doc(tmp_path / "in.docx", titlepg=True)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    d = Document(tmp_path / "out.docx")
+    assert "PAGE" not in _footer_xml(d.sections[0], "first_page_footer")
+    assert "PAGE" in _footer_xml(d.sections[1], "first_page_footer")
+    assert "PAGE" in _footer_xml(d.sections[0])
+
+
+def test_even_odd_footers_numbered(tmp_path):
+    src = _multi_section_doc(tmp_path / "in.docx", even=True)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    d = Document(tmp_path / "out.docx")
+    assert "PAGE" in _footer_xml(d.sections[0], "even_page_footer")
+    assert "PAGE" in _footer_xml(d.sections[0])
+
+
+def test_section_without_own_page_field_gets_one(tmp_path):
+    src = tmp_path / "in.docx"
+    from docx.enum.section import WD_SECTION
+    from docx.oxml import parse_xml
+    d = Document()
+    d.add_paragraph("a")
+    fp = d.sections[0].footer.paragraphs[0]
+    fp._p.append(parse_xml(f'<w:fldSimple xmlns:w="{W}" w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple>'))
+    d.add_section(WD_SECTION.NEW_PAGE)
+    d.sections[1].footer.is_linked_to_previous = False
+    d.sections[1].footer.paragraphs[0].text = "altro"
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    assert "PAGE" in _footer_xml(out.sections[1])
+
+
+def test_body_text_style_with_own_font_inherits_normal(tmp_path):
+    src = write_docx(tmp_path / "in.docx", [("Body Text", "corpo")])
+    d = Document(src)
+    st = d.styles["Body Text"]
+    st.font.name = "Arial"
+    st.font.size = Pt(9)
+    st.base_style = None
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    el = out.styles["Body Text"].element
+    assert out.styles["Body Text"].font.name is None and out.styles["Body Text"].font.size is None
+    assert 'w:lineRule="exact"' in el.xml
+
+
+def test_title_page_keeps_direct_formatting(tmp_path):
+    src = tmp_path / "in.docx"
+    d = Document()
+    p = d.add_paragraph()
+    r = p.add_run("FRONTESPIZIO")
+    r.font.name = "Arial"
+    r.font.size = Pt(30)
+    d.add_page_break()
+    q = d.add_paragraph()
+    r2 = q.add_run("corpo")
+    r2.font.name = "Arial"
+    r2.font.size = Pt(30)
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    assert out.paragraphs[0].runs[0].font.size == Pt(30)
+    assert out.paragraphs[-1].runs[0].font.size is None
+    assert out.paragraphs[-1].runs[0].font.name is None
+
+
+def test_textbox_paragraphs_keep_direct_formatting(tmp_path):
+    from docx.oxml import parse_xml
+    src = tmp_path / "in.docx"
+    d = Document()
+    for _ in range(3):
+        d.add_paragraph("x")
+    d.paragraphs[2]._p.append(parse_xml(
+        f'<w:r xmlns:w="{W}"><w:pict><w:txbxContent><w:p><w:r><w:rPr><w:sz w:val="60"/></w:rPr>'
+        f'<w:t>box</w:t></w:r></w:p></w:txbxContent></w:pict></w:r>'))
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    assert 'w:val="60"' in out.element.body.xml
