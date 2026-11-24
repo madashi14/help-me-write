@@ -3,8 +3,17 @@
   "description": "Review and write formal documents (internship reports, papers): checks guidelines, layout and bibliography, and proposes tracked corrections.",
   "version": "0.1.0",
   "author": {
-    "name": "help-me-write"
+    "name": "madashi14"
   },
+  "homepage": "https://github.com/madashi14/help-me-write",
+  "repository": "https://github.com/madashi14/help-me-write",
   "license": "MIT",
-  "keywords": ["writing", "review", "docx", "latex", "thesis", "bibliography"]
+  "keywords": [
+    "writing",
+    "review",
+    "docx",
+    "latex",
+    "thesis",
+    "bibliography"
+  ]
 }

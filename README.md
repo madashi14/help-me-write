@@ -8,6 +8,7 @@ propone le correzioni come revisioni tracciate, senza mai modificare l'originale
 
 - Python 3.10 o superiore
 - Dipendenze Python: `pip install -r requirements.txt`
+  (su Python di sistema Debian/Ubuntu, `bibtexparser` può richiedere `pip install --use-pep517 bibtexparser`)
 - Opzionali: LibreOffice (conversione in PDF e misura dell'impaginazione), `latexmk` e
   `latexdiff` (documenti LaTeX). Si installano da https://www.libreoffice.org/download/ e
   https://tug.org/texlive/.
@@ -17,14 +18,14 @@ propone le correzioni come revisioni tracciate, senza mai modificare l'originale
 ### Claude Code
 
 ```
-/plugin marketplace add <utente>/help-me-write
+/plugin marketplace add madashi14/help-me-write
 /plugin install help-me-write@help-me-write
 ```
 
 ### Codex
 
 ```
-codex plugin marketplace add <utente>/help-me-write
+codex plugin marketplace add madashi14/help-me-write
 ```
 
 Poi installa `help-me-write` dal marketplace aggiunto.

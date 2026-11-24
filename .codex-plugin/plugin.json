@@ -3,23 +3,37 @@
   "version": "0.1.0",
   "description": "Review and write formal documents (internship reports, papers): checks guidelines, layout and bibliography, and proposes tracked corrections.",
   "author": {
-    "name": "help-me-write"
+    "name": "madashi14"
   },
+  "homepage": "https://github.com/madashi14/help-me-write",
+  "repository": "https://github.com/madashi14/help-me-write",
   "license": "MIT",
-  "keywords": ["writing", "review", "docx", "latex", "thesis", "bibliography"],
+  "keywords": [
+    "writing",
+    "review",
+    "docx",
+    "latex",
+    "thesis",
+    "bibliography"
+  ],
   "skills": "./skills/",
   "hooks": {},
   "interface": {
     "displayName": "Help Me Write",
     "shortDescription": "Review and write formal documents against their guidelines",
     "longDescription": "Help Me Write reviews internship reports and papers (Word or LaTeX) against the institution's guidelines, checks layout and bibliography, and proposes corrections as tracked changes without touching the original.",
-    "developerName": "help-me-write",
+    "developerName": "madashi14",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Rivedi la mia relazione",
       "Review my paper draft"
     ],
-    "screenshots": []
+    "screenshots": [],
+    "websiteURL": "https://github.com/madashi14/help-me-write"
   }
 }
