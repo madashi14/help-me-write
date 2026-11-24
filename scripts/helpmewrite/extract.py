@@ -131,16 +131,30 @@ def extract_tex(main: Path) -> list[dict]:
 
 
 def extract_pdf(path) -> list[dict]:
+    """One paragraph per block of lines; a block ends at a vertical gap clearly
+    larger than the page's typical line pitch (pdfplumber emits no blank lines)."""
+    import statistics
+
     import pdfplumber
 
     result = []
     with pdfplumber.open(str(path)) as pdf:
         for number, page in enumerate(pdf.pages, start=1):
-            text = page.extract_text() or ""
-            for block in re.split(r"\n\s*\n", text):
-                block = " ".join(block.split())
-                if block:
-                    result.append({"id": len(result), "page": number, "text": block})
+            lines = page.extract_text_lines()
+            pitches = [b["top"] - a["top"] for a, b in zip(lines, lines[1:])
+                       if b["top"] > a["top"]]
+            typical = statistics.median(pitches) if pitches else 0
+            block, prev = [], None
+            for line in lines + [None]:
+                gap = (line["top"] - prev["top"]) if (line and prev) else 0
+                if block and (line is None or (typical and gap > 1.3 * typical)):
+                    text = " ".join(" ".join(block).split())
+                    if text:
+                        result.append({"id": len(result), "page": number, "text": text})
+                    block = []
+                if line is not None:
+                    block.append(line["text"])
+                    prev = line
     return result
 
 
@@ -165,10 +179,16 @@ def run(args) -> int:
     if not path.is_file():
         print(f"error: file not found: {path}", file=sys.stderr)
         return 2
+    if cli.refuses_overwrite(path, args):
+        return 2
     try:
         data = extract(path)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # corrupt or unreadable document
+        print(f"error: cannot read {path.name} as a valid document "
+              f"({type(exc).__name__}: {exc})", file=sys.stderr)
         return 2
     text = "\n".join(f"[{p['id']}] {p['text']}" for p in data["paragraphs"])
     cli.emit(data, args, text=text)

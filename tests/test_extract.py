@@ -82,13 +82,14 @@ def test_extract_tex_include_with_extension_and_subdir(tmp_path):
 def test_extract_pdf(tmp_path):
     import subprocess
 
-    d = write_docx(tmp_path / "a.docx", ["Primo paragrafo.", "Secondo paragrafo."])
+    d = write_docx(tmp_path / "a.docx", italian_paragraphs(3))
     cmd = [render.find_soffice(), f"-env:UserInstallation={(tmp_path / 'prof').as_uri()}",
            "--headless", "--convert-to", "pdf", "--outdir", str(tmp_path), str(d)]
     subprocess.run(cmd, check=True, capture_output=True, timeout=180)
     paras = extract_pdf(tmp_path / "a.pdf")
-    assert paras and paras[0]["page"] == 1
-    assert "Primo paragrafo." in " ".join(p["text"] for p in paras)
+    assert [p["page"] for p in paras] == [1, 1, 1]
+    assert paras[0]["text"].startswith("Il tirocinio curriculare")
+    assert paras[2]["text"].startswith("Dal confronto")
 
 
 def test_extract_dispatch_and_command(tmp_path, capsys):
@@ -104,3 +105,18 @@ def test_extract_dispatch_and_command(tmp_path, capsys):
 def test_italian_paragraphs_cycle():
     base = italian_paragraphs(100)
     assert len(base) == 100 and base[0] == base[len(set(base))]
+
+
+def test_extract_refuses_output_equal_to_source(tmp_path):
+    p = write_docx(tmp_path / "a.docx", ["Uno."])
+    before = p.read_bytes()
+    assert cli.main(["extract", str(p), "-o", str(p)]) == 2
+    assert p.read_bytes() == before
+
+
+@pytest.mark.parametrize("name", ["bad.docx", "bad.pdf"])
+def test_extract_corrupt_file_exits_2(tmp_path, name, capsys):
+    p = tmp_path / name
+    p.write_text("not a real document", encoding="utf-8")
+    assert cli.main(["extract", str(p)]) == 2
+    assert "error" in capsys.readouterr().err

@@ -33,6 +33,17 @@ def emit(data: dict, args, text=None) -> None:
         print(text if text is not None else payload)
 
 
+def refuses_overwrite(source, args) -> bool:
+    """True (after printing an error) if -o points at the source file itself."""
+    from pathlib import Path
+
+    output = getattr(args, "output", None)
+    if output and Path(output).resolve() == Path(source).resolve():
+        print(f"error: output would overwrite the original: {source}", file=sys.stderr)
+        return True
+    return False
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(prog="hmw", description="help-me-write helper")
     sub = parser.add_subparsers(dest="command", required=True)
