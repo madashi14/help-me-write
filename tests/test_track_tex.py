@@ -195,3 +195,23 @@ def test_texdiff_with_relative_graphic(project, tmp_path):
     pdf = texdiff(project / "main.tex", out / "main.tex", tmp_path / "d.pdf")
     assert pdf.read_bytes().startswith(b"%PDF")
     assert not list(out.glob("hmw-texdiff-*"))
+
+
+def test_extract_with_stray_byte_is_printable_and_edit_still_applies(project, tmp_path, capsys):
+    import json
+    from helpmewrite import cli
+    from helpmewrite.extract import extract_tex
+    (project / "cap.tex").write_bytes("città \xe9 errorre fine\n".encode("latin-1")[:0]
+                                      + "città ".encode("utf-8") + b"\xe9 errorre fine\n")
+    entries = [e for e in extract_tex(project / "main.tex") if e["file"] == "cap.tex"]
+    assert "�" in entries[0]["text"] and "errorre" in entries[0]["text"]
+    json.dumps(entries, ensure_ascii=False).encode("utf-8")
+    assert cli.main(["extract", str(project / "main.tex"), "--json"]) == 0
+    assert "�" in capsys.readouterr().out
+    out_json = tmp_path / "x.json"
+    assert cli.main(["extract", str(project / "main.tex"), "-o", str(out_json)]) == 0
+    assert "�" in out_json.read_text(encoding="utf-8")
+    apply_edits_tex(project / "main.tex", EditSet("a", [
+        edit("errorre", "errore", file="cap.tex", line=entries[0]["line"])]), tmp_path / "o")
+    assert (tmp_path / "o" / "cap.tex").read_bytes() == \
+        "città ".encode("utf-8") + b"\xe9 errore fine\n"

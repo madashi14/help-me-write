@@ -136,7 +136,8 @@ def extract_tex(main: Path) -> list[dict]:
             return
         seen.add(key)
         rel = file.relative_to(base).as_posix() if file.is_relative_to(base) else file.name
-        lines = split_tex_lines(read_tex_text(file)[0])
+        text = read_tex_text(file)[0].encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+        lines = split_tex_lines(text)
         for n, raw in enumerate(lines, start=1):
             line = raw.strip()
             if not line or line.startswith("%"):
