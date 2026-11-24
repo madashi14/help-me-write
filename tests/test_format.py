@@ -297,3 +297,40 @@ def test_textbox_paragraphs_keep_direct_formatting(tmp_path):
     apply_layout(src, unibo_layout(), tmp_path / "out.docx")
     out = Document(tmp_path / "out.docx")
     assert 'w:val="60"' in out.element.body.xml
+
+
+def test_normal_spacing_zero_and_first_line_indent(tmp_path):
+    from docx.shared import Twips
+    src = write_docx(tmp_path / "in.docx", [("Heading 1", "Titolo"), "testo", ("List", "voce")])
+    changes = apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    d = Document(tmp_path / "out.docx")
+    normal = d.styles["Normal"].paragraph_format
+    assert normal.space_before == 0 and normal.space_after == 0
+    assert normal.first_line_indent.cm == pytest.approx(1.0, abs=0.01)  # 567 twips
+    defaults = d.styles.element.find(f"{{{W}}}docDefaults/{{{W}}}pPrDefault/{{{W}}}pPr/{{{W}}}spacing")
+    assert defaults.get(f"{{{W}}}before") == "0" and defaults.get(f"{{{W}}}after") == "0"
+    heading = d.styles["Heading 1"].paragraph_format
+    assert heading.space_before == Twips(480) and heading.space_after == 0  # untouched
+    for name in ("Heading 1", "Title", "Footer", "Caption"):  # keep their previous indent
+        assert d.styles[name].paragraph_format.first_line_indent == 0, name
+    assert d.styles["List"].paragraph_format.first_line_indent == -Twips(360)  # hanging kept
+    assert any("spacing before/after 0" in c for c in changes)
+    assert any("first-line indent 1 cm" in c for c in changes)
+
+
+def test_first_line_indent_not_on_title_page_tables_centered(tmp_path):
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    src = tmp_path / "in.docx"
+    d = Document()
+    d.add_paragraph("FRONTESPIZIO")
+    d.add_page_break()
+    d.add_paragraph("figura").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    d.add_table(rows=1, cols=1).cell(0, 0).text = "cella"
+    d.add_paragraph("corpo")
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    first_line = {p.text: p.paragraph_format.first_line_indent for p in out.paragraphs}
+    assert first_line["FRONTESPIZIO"] == 0 and first_line["figura"] == 0
+    assert out.tables[0].cell(0, 0).paragraphs[0].paragraph_format.first_line_indent == 0
+    assert first_line["corpo"] is None  # inherits the indent from Normal

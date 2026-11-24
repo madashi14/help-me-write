@@ -189,10 +189,9 @@ def _title_page_paragraphs(body) -> set:
     return protected
 
 
-def _strip_direct_overrides(body) -> int:
+def _strip_direct_overrides(body, protected) -> int:
     """Remove direct font/size/line-spacing overrides from body paragraphs (not title page)."""
     count = 0
-    protected = _title_page_paragraphs(body)
     for p in body.iter(_q("p")):
         if p in protected:
             continue
@@ -213,6 +212,53 @@ def _strip_direct_overrides(body) -> int:
             count += removed
             if not spacing.attrib:
                 spacing.getparent().remove(spacing)
+    return count
+
+
+FIRST_LINE_INDENT_CM = 1.0
+
+
+def _zero_paragraph_spacing(ppr):
+    """Spacing before/after 0 on a pPr (style or document defaults); line spacing untouched."""
+    spacing = ppr.get_or_add_spacing()
+    for attr in ("beforeAutospacing", "afterAutospacing", "beforeLines", "afterLines"):
+        spacing.attrib.pop(_q(attr), None)
+    spacing.set(_q("before"), "0")
+    spacing.set(_q("after"), "0")
+
+
+def _inherited_first_line(style):
+    """First-line indent (negative = hanging) a style gets from itself or its base styles."""
+    for _ in range(20):  # basedOn chains are short; guards against cycles
+        if style is None:
+            break
+        if style.paragraph_format.first_line_indent is not None:
+            return style.paragraph_format.first_line_indent
+        style = style.base_style
+    return 0
+
+
+def _keep_unindented(body, normal_id, protected) -> int:
+    """Give Normal paragraphs that must not get the new first-line indent an explicit 0.
+
+    Title page paragraphs, table cells and centered or right-aligned paragraphs (figures)
+    keep their previous look. Paragraphs with their own indent are left alone.
+    """
+    count = 0
+    for p in body.iter(_q("p")):
+        ppr = p.find(_q("pPr"))
+        style = None if ppr is None else ppr.find(_q("pStyle"))
+        if style is not None and style.get(_q("val")) != normal_id:
+            continue
+        ind = None if ppr is None else ppr.find(_q("ind"))
+        if ind is not None and (_q("firstLine") in ind.attrib or _q("hanging") in ind.attrib):
+            continue
+        jc = None if ppr is None else ppr.find(_q("jc"))
+        centered = jc is not None and jc.get(_q("val")) in ("center", "right", "end")
+        in_table = any(a.tag == _q("tc") for a in p.iterancestors())
+        if p in protected or in_table or centered:
+            p.get_or_add_pPr().get_or_add_ind().set(_q("firstLine"), "0")
+            count += 1
     return count
 
 
@@ -297,14 +343,21 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
         f"bottom {m['bottom']}, left {m['left']}, right {m['right']} "
         f"({len(document.sections)} section(s))")
 
+    def is_normal(style):
+        return style.style_id == "Normal" or (style.name or "").lower() == "normal"
+
+    paragraph_styles = [s for s in document.styles
+                        if s.type == docx.enum.style.WD_STYLE_TYPE.PARAGRAPH]
+    normal = next((s for s in paragraph_styles if is_normal(s)), None)
+    # Only Normal paragraphs get the new first-line indent: other styles keep the one they had.
+    kept_indent = [(s, _inherited_first_line(s)) for s in paragraph_styles
+                   if not is_normal(s) and s.paragraph_format.first_line_indent is None]
+
     styled = []
-    for style in document.styles:
-        if style.type != docx.enum.style.WD_STYLE_TYPE.PARAGRAPH:
-            continue
-        is_normal = style.style_id == "Normal" or (style.name or "").lower() == "normal"
+    for style in paragraph_styles:
         if _PROTECTED_STYLE_RE.match(style.name or ""):
             continue
-        if is_normal:
+        if is_normal(style):
             _set_style_font(style, layout.docx_font)
             style.font.size = Pt(layout.font_size_pt)
             styled.append(style.name)
@@ -326,7 +379,25 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
     if layout.line_pitch_pt is not None:
         changes.append(f"exact line spacing {layout.line_pitch_pt} pt on all paragraph styles except Title/Subtitle")
 
-    removed = _strip_direct_overrides(document.element.body)
+    body = document.element.body
+    protected = _title_page_paragraphs(body)
+    if normal is not None:
+        defaults = document.styles.element.find(
+            f"{_q('docDefaults')}/{_q('pPrDefault')}/{_q('pPr')}")
+        _zero_paragraph_spacing(normal.element.get_or_add_pPr())
+        if defaults is not None:
+            _zero_paragraph_spacing(defaults)
+        changes.append("paragraph spacing before/after 0 pt on Normal"
+                       + (" and the document defaults" if defaults is not None else ""))
+        normal.paragraph_format.first_line_indent = Cm(FIRST_LINE_INDENT_CM)
+        for style, indent in kept_indent:
+            style.paragraph_format.first_line_indent = indent
+        unindented = _keep_unindented(body, normal.style_id, protected)
+        changes.append(f"first-line indent {FIRST_LINE_INDENT_CM:g} cm on Normal (other styles keep "
+                       f"their indent; {unindented} title-page, table or centered paragraph(s) "
+                       "kept unindented)")
+
+    removed = _strip_direct_overrides(body, protected)
     if removed:
         changes.append(f"removed {removed} direct font/size/line-spacing override(s) from the body")
 

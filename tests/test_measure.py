@@ -1,4 +1,5 @@
 import json
+import statistics
 
 import docx
 import pytest
@@ -31,6 +32,10 @@ def test_layout_meets_unibo_rules_after_measure(tmp_path, font):
     assert by["chars_per_line"].ok, by["chars_per_line"].detail
     assert by["lines_per_page"].ok, by["lines_per_page"].detail
     assert by["font_family"].ok and by["page_numbers"].ok
+    # calibration: near the targets (65 chars, 33 lines), not at the edges of the ranges
+    full = [p for p in m.pages if p.number != 1 and p.is_full]
+    assert 63 <= statistics.median(p.chars_per_full_line for p in full) <= 67, by["chars_per_line"].detail
+    assert all(32 <= p.body_lines <= 34 for p in full), by["lines_per_page"].detail
 
 
 @needs_soffice

@@ -31,13 +31,15 @@ def test_normalize_font(raw, fam):
 
 def test_constants():
     assert DOCX_FONT["courier"] == "Courier New"
-    assert AVG_CHAR_WIDTH_EM["courier"] == 0.60
+    # Effective width including word-wrap loss, calibrated in Task 6 on rendered PDFs
+    # (the glyphs are 0.60 em; 0.63 leaves room for 68 so that full lines measure ~65).
+    assert AVG_CHAR_WIDTH_EM["courier"] == 0.63
 
 
 def test_courier_layout_unibo():
     lay = compute_layout(load_rules(UNIBO), "Courier")
     assert lay.target_chars == 65 and lay.target_lines == 33
-    assert lay.margins_cm["left"] == pytest.approx(2.25, abs=0.05)
+    assert lay.margins_cm["left"] == pytest.approx(1.83, abs=0.05)  # calibrated in Task 6
     assert lay.margins_cm["left"] == lay.margins_cm["right"]
     assert lay.margins_cm["top"] == lay.margins_cm["bottom"] == 2.5
     assert lay.line_pitch_pt == pytest.approx(21.1, abs=0.1)

@@ -8,9 +8,17 @@ page numbers and section lengths. Algorithm:
   0.6 pt of it and outside the header/footer bands (top and bottom 7% of the page);
 - a full line is at least 90% as wide as the widest body line of the document;
 - a full page has body lines spanning at least 75% of the mean span over pages with text;
-  the last page is never full (the text ends there, so it is short by design);
 - lines and characters per line are checked on full pages only, never on page 1 (title
   page); page numbers are checked on every page but page 1.
+
+Departures from the plan's algorithm (accepted by the controller, ruling R6):
+1. the last page is never full: the text ends there, so a page filled 75-95% would
+   otherwise fail lines_per_page;
+2. a heading is located on a page with a line that is the whole title (numbering stripped)
+   before falling back to "the page text contains the title": table-of-contents entries
+   ("Introduzione 3") and mentions in the prose would otherwise win;
+3. page 1 is searched too, as a fallback for whole-line matches only, so a draft without a
+   title page still finds an introduction on page 1.
 """
 import re
 import shutil
