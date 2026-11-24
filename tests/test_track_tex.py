@@ -134,3 +134,64 @@ def test_texdiff_produces_pdf(project, tmp_path):
     from helpmewrite import cli
     assert cli.main(["texdiff", str(project / "main.tex"), str(out / "main.tex"),
                      "-o", str(tmp_path / "d2.pdf")]) == 0
+
+
+def test_form_feed_does_not_shift_lines(project, tmp_path):
+    from helpmewrite.extract import extract_tex
+    (project / "main.tex").write_bytes(b"a\x0cb\nc errorre\nd\n")
+    entry = [e for e in extract_tex(project / "main.tex") if "errorre" in e["text"]][0]
+    assert entry["line"] == 2
+    r = apply_edits_tex(project / "main.tex", EditSet("a", [
+        edit("errorre", "errore", line=entry["line"])]), tmp_path / "out")
+    assert r.applied == [0]
+    assert (tmp_path / "out" / "main.tex").read_bytes() == b"a\x0cb\nc errore\nd\n"
+
+
+def test_stray_byte_in_utf8_file(project, tmp_path):
+    (project / "cap.tex").write_bytes("citt\u00e0 errorre ".encode("utf-8") + b"\xe9\n")
+    r = apply_edits_tex(project / "main.tex", EditSet("a", [
+        edit("citt\u00e0 errorre", "perch\u00e9 \u2014 \u20ac", file="cap.tex", line=1)]),
+        tmp_path / "out")
+    assert r.applied == [0] and not r.notes
+    assert (tmp_path / "out" / "cap.tex").read_bytes() == \
+        "perch\u00e9 \u2014 \u20ac ".encode("utf-8") + b"\xe9\n"
+
+
+def test_latin1_unencodable_replace_fails_cleanly(project, tmp_path):
+    (project / "cap.tex").write_bytes("citt\u00e0 errorre\n".encode("latin-1"))
+    r = apply_edits_tex(project / "main.tex", EditSet("a", [
+        edit("errorre", "\u20ac", file="cap.tex", line=1)]), tmp_path / "out")
+    assert r.failed and "latin-1" in r.failed[0]["reason"]
+
+
+def test_no_half_built_folder_on_error(project, tmp_path, monkeypatch):
+    from helpmewrite import track_tex
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(track_tex, "_apply", boom)
+    with pytest.raises(RuntimeError):
+        apply_edits_tex(project / "main.tex", EditSet("a", []), tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+    assert [p.name for p in tmp_path.iterdir()] == [project.name]
+
+
+@pytest.mark.needs_latex
+def test_texdiff_with_relative_graphic(project, tmp_path):
+    import zlib, struct
+
+    def chunk(t, d):
+        c = struct.pack(">I", len(d)) + t + d
+        return c + struct.pack(">I", zlib.crc32(t + d))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00")) + chunk(b"IEND", b""))
+    (project / "figs").mkdir()
+    (project / "figs" / "a.png").write_bytes(png)
+    (project / "main.tex").write_bytes(
+        b"\\documentclass{article}\\usepackage{graphicx}\n\\begin{document}\nTesto errorre.\n"
+        b"\\includegraphics[width=1cm]{figs/a.png}\n\\end{document}\n")
+    out = tmp_path / "out"
+    apply_edits_tex(project / "main.tex", EditSet("a", [edit("errorre", "errore")]), out)
+    pdf = texdiff(project / "main.tex", out / "main.tex", tmp_path / "d.pdf")
+    assert pdf.read_bytes().startswith(b"%PDF")
+    assert not list(out.glob("hmw-texdiff-*"))

@@ -1,18 +1,19 @@
 """LaTeX: edits applied to a copy of the project, and a PDF of the differences (latexdiff)."""
-import re
+import secrets
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from .edits import EditsError, EditSet
+from .extract import read_tex_text, split_tex_lines
 from .render import RenderError, render_pdf
 from .track_docx import ApplyResult
 
 WINDOW = 2
 _IGNORED_DIRS = (".help-me-write",)
-_IGNORED_FILES = ("*.aux", "*.log", "*.fls", "*.fdb_latexmk", "*.synctex.gz", "*.out", "*.toc")
-_LINE = re.compile(r"[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+")
+_IGNORED_FILES = ("hmw-texdiff-*", "*.aux", "*.log", "*.fls", "*.fdb_latexmk",
+                  "*.synctex.gz", "*.out", "*.toc")
 _TIMEOUT_S = 180
 _LATEXDIFF_HINT = ("latexdiff is needed to show the differences: install TeX Live "
                    "(https://tug.org/texlive/) or MiKTeX (https://miktex.org/)")
@@ -31,14 +32,6 @@ def _prepare_out_dir(src_dir: Path, out_dir: Path) -> Path:
     if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
         raise EditsError([f"output folder {out_dir} already exists and is not empty"])
     return out_dir
-
-
-def _read(path: Path):
-    data = path.read_bytes()
-    try:
-        return data.decode("utf-8"), False
-    except UnicodeDecodeError:
-        return data.decode("latin-1"), True
 
 
 def _fix_in_window(lines, line, find):
@@ -86,8 +79,23 @@ def apply_edits_tex(main: Path, edits: EditSet, out_dir: Path) -> ApplyResult:
     """
     main = Path(main)
     out_dir = _prepare_out_dir(main.parent, Path(out_dir))
-    shutil.copytree(main.parent, out_dir, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(*_IGNORED_DIRS, *_IGNORED_FILES))
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    # built beside the destination and renamed at the end: no half-built folder on failure
+    build = Path(tempfile.mkdtemp(prefix=".hmw-track-", dir=out_dir.parent))
+    try:
+        shutil.copytree(main.parent, build, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns(*_IGNORED_DIRS, *_IGNORED_FILES))
+        result = _apply(build, edits)
+        if out_dir.exists():
+            out_dir.rmdir()
+        build.rename(out_dir)
+    except BaseException:
+        shutil.rmtree(build, ignore_errors=True)
+        raise
+    return result
+
+
+def _apply(out_dir: Path, edits: EditSet) -> ApplyResult:
     result = ApplyResult()
     cache = {}  # path -> (lines, latin1)
     for index, edit in enumerate(edits.edits):
@@ -105,11 +113,17 @@ def apply_edits_tex(main: Path, edits: EditSet, out_dir: Path) -> ApplyResult:
             fail(f"file not found: {edit.file}")
             continue
         if path not in cache:
-            text, latin1 = _read(path)
-            cache[path] = ([m for m in _LINE.findall(text)], latin1)
+            text, latin1 = read_tex_text(path)
+            cache[path] = (split_tex_lines(text), latin1)
             if latin1:
                 result.notes.append(f"{edit.file} is not UTF-8: read and written as latin-1")
-        lines = cache[path][0]
+        lines, latin1 = cache[path]
+        if latin1:
+            try:
+                edit.replace.encode("latin-1")
+            except UnicodeEncodeError:
+                fail("replace cannot be written in this file's latin-1 encoding")
+                continue
         hit = _fix_in_window(lines, edit.line, edit.find)
         if isinstance(hit, str):
             fail(hit)
@@ -118,7 +132,9 @@ def apply_edits_tex(main: Path, edits: EditSet, out_dir: Path) -> ApplyResult:
         lines[i] = lines[i][:pos] + edit.replace + lines[i][pos + len(edit.find):]
         result.applied.append(index)
     for path, (lines, latin1) in cache.items():
-        path.write_bytes("".join(lines).encode("latin-1" if latin1 else "utf-8"))
+        data = "".join(lines).encode("latin-1" if latin1 else "utf-8",
+                                     errors="strict" if latin1 else "surrogateescape")
+        path.write_bytes(data)
     return result
 
 
@@ -140,8 +156,10 @@ def texdiff(old_main: Path, new_main: Path, out_pdf: Path) -> Path:
         raise RenderError(_LATEXDIFF_HINT, missing_tool="latexdiff")
     if shutil.which("latexmk") is None:
         render_pdf(new_main, Path(tempfile.gettempdir()))  # raises the latexmk hint
-    # inside the new project's folder, so relative \includegraphics paths still resolve
-    work = Path(tempfile.mkdtemp(prefix=".hmw-texdiff-", dir=new_main.parent))
+    # diff.tex sits in the new project's folder (compiled from there, so relative
+    # \includegraphics paths resolve); the build output goes to a separate temp folder
+    work = Path(tempfile.mkdtemp(prefix="hmw-texdiff-"))
+    diff = new_main.parent / f"hmw-texdiff-{secrets.token_hex(4)}.tex"
     try:
         try:
             proc = subprocess.run([latexdiff, "--flatten", str(old_main.resolve()),
@@ -155,13 +173,13 @@ def texdiff(old_main: Path, new_main: Path, out_pdf: Path) -> Path:
         if proc.returncode != 0 or not proc.stdout.strip():
             raise RenderError(f"latexdiff failed (exit code {proc.returncode}): "
                               f"{_excerpt(proc.stderr.decode('utf-8', 'replace'))}")
-        diff = work / "diff.tex"
         diff.write_bytes(proc.stdout)
         pdf = render_pdf(diff, work)
         out_pdf.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(pdf, out_pdf)
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        diff.unlink(missing_ok=True)
     return out_pdf
 
 

@@ -99,6 +99,31 @@ def extract_docx(path) -> list[dict]:
 _INPUT = re.compile(r"^\\(?:input|include)\s*\{([^}]*)\}\s*(?:%.*)?$")
 
 
+_TEX_LINE = re.compile(r"[^\r\n]*(?:\r\n|\n|\r)|[^\r\n]+")
+
+
+def split_tex_lines(text: str) -> list[str]:
+    """Lines of a .tex text, terminators kept; only \\r\\n, \\n and \\r end a line.
+
+    (str.splitlines also splits on form feed and others, which editors do not count.)
+    """
+    return _TEX_LINE.findall(text)
+
+
+def read_tex_text(path: Path) -> tuple[str, bool]:
+    """(text, is_latin1) of a .tex file.
+
+    UTF-8 is lossless: stray invalid bytes survive as lone surrogates (re-encode with
+    errors="surrogateescape"). A file with invalid bytes and no valid non-ASCII UTF-8 at
+    all is read as latin-1 instead.
+    """
+    text = Path(path).read_bytes().decode("utf-8", errors="surrogateescape")
+    bad = sum(1 for c in text if "\udc80" <= c <= "\udcff")
+    if bad and not any(ord(c) > 127 and not "\udc80" <= c <= "\udcff" for c in text):
+        return Path(path).read_bytes().decode("latin-1"), True
+    return text, False
+
+
 def extract_tex(main: Path) -> list[dict]:
     main = Path(main)
     base = main.parent
@@ -111,7 +136,7 @@ def extract_tex(main: Path) -> list[dict]:
             return
         seen.add(key)
         rel = file.relative_to(base).as_posix() if file.is_relative_to(base) else file.name
-        lines = file.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = split_tex_lines(read_tex_text(file)[0])
         for n, raw in enumerate(lines, start=1):
             line = raw.strip()
             if not line or line.startswith("%"):
