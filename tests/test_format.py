@@ -399,3 +399,118 @@ def test_title_page_window_is_15_paragraphs(tmp_path, before_break, kept):
     out = Document(tmp_path / "out.docx")
     assert (out.paragraphs[0].runs[0].font.size == Pt(20)) is kept
     assert out.paragraphs[-1].runs[0].font.size is None
+
+
+# --- LaTeX projects ----------------------------------------------------------------------
+
+import hashlib  # noqa: E402
+
+from fixtures.builders import write_tex_report  # noqa: E402
+from helpmewrite.layout import apply_layout_tex, setstretch_factor  # noqa: E402
+
+BEGIN = "% help-me-write: impaginazione (inizio)"
+END = "% help-me-write: impaginazione (fine)"
+
+
+def _tree_hash(folder):
+    return {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(folder.rglob("*")) if p.is_file()}
+
+
+def _tex_project(folder, preamble_extra="\\usepackage[margin=2cm]{geometry}\n\\usepackage{setspace}\n",
+                 options="12pt"):
+    (folder / "capitoli").mkdir(parents=True)
+    (folder / "immagini").mkdir()
+    (folder / "immagini" / "a.png").write_bytes(b"\x89PNG fake")
+    (folder / "immagini" / "grafico.pdf").write_bytes(b"%PDF fake figure")
+    (folder / "capitoli" / "uno.tex").write_text("\\chapter{Uno}\nTesto.\n", encoding="utf-8")
+    main = folder / "main.tex"
+    main.write_text(f"\\documentclass[{options}]{{report}}\n{preamble_extra}"
+                    "\\begin{document}\n\\input{capitoli/uno}\n\\end{document}\n", encoding="utf-8")
+    for name in ("main.aux", "main.log", "main.toc", "main.out", "main.synctex.gz",
+                 "main.fdb_latexmk", "main.fls", "main.bbl", "main.blg", "main.xdv", "main.pdf"):
+        (folder / name).write_text("x", encoding="utf-8")
+    return main
+
+
+def test_setstretch_factor():
+    assert setstretch_factor(21.1, 12) == 1.4552
+    assert setstretch_factor(12.0, 10) == 1.0
+    assert setstretch_factor(13.6, 11) == 1.0
+    assert setstretch_factor(14.5, 12) == 1.0
+    with pytest.raises(LayoutError):
+        setstretch_factor(20.0, 9)
+
+
+def test_format_tex_copies_project_and_sets_layout(tmp_path):
+    main = _tex_project(tmp_path / "src")
+    before = _tree_hash(tmp_path / "src")
+    code = cli.main(["format", str(main), "--layout", str(_layout_file(tmp_path)),
+                     "-o", str(tmp_path / "out")])
+    assert code == 0
+    out = tmp_path / "out"
+    names = {p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()}
+    assert names == {"main.tex", "capitoli/uno.tex", "immagini/a.png", "immagini/grafico.pdf"}
+    text = (out / "main.tex").read_text(encoding="utf-8")
+    assert text.index(BEGIN) < text.index(END) < text.index("\\begin{document}")
+    assert text.count("\\usepackage") == 2  # geometry and setspace, not repeated
+    assert "\\geometry{a4paper,top=2.5cm,bottom=2.5cm,left=4.83cm,right=4.83cm}" in text
+    assert f"\\setstretch{{{setstretch_factor(unibo_layout().line_pitch_pt, 12)}}}" in text
+    assert _tree_hash(tmp_path / "src") == before
+
+
+def test_format_tex_adds_packages_when_missing(tmp_path):
+    main = _tex_project(tmp_path / "src", preamble_extra="% \\usepackage{geometry}\n")
+    changes = apply_layout_tex(main, unibo_layout(), tmp_path / "out")
+    text = (tmp_path / "out" / "main.tex").read_text(encoding="utf-8")
+    block = text[text.index(BEGIN):text.index(END)]
+    assert "\\usepackage{geometry}" in block and "\\usepackage{setspace}" in block
+    assert changes
+
+
+def test_format_tex_twice_keeps_one_block(tmp_path):
+    main = _tex_project(tmp_path / "src", preamble_extra="")
+    apply_layout_tex(main, unibo_layout(), tmp_path / "one")
+    apply_layout_tex(tmp_path / "one" / "main.tex", unibo_layout("Courier"), tmp_path / "two")
+    text = (tmp_path / "two" / "main.tex").read_text(encoding="utf-8")
+    assert text.count(BEGIN) == 1 and text.count(END) == 1
+    assert text.count("\\usepackage{geometry}") == 1 and text.count("\\setstretch") == 1
+
+
+def test_format_tex_without_layout_is_plain_copy(tmp_path):
+    main = _tex_project(tmp_path / "src")
+    code = cli.main(["format", str(main), "-o", str(tmp_path / "out")])
+    assert code == 0
+    assert (tmp_path / "out" / "main.tex").read_bytes() == main.read_bytes()
+    assert not (tmp_path / "out" / "main.pdf").exists()
+
+
+def test_format_tex_font_warning(tmp_path):
+    main = _tex_project(tmp_path / "src", preamble_extra="\\usepackage{fontspec}\n\\setmainfont{Calibri}\n")
+    changes = apply_layout_tex(main, unibo_layout(), tmp_path / "out")
+    assert "font not changed: the document uses Calibri, the layout asks for times" in changes
+
+
+def test_format_tex_refuses_output_inside_project(tmp_path):
+    main = _tex_project(tmp_path / "src")
+    before = _tree_hash(tmp_path / "src")
+    assert cli.main(["format", str(main), "--layout", str(_layout_file(tmp_path)),
+                     "-o", str(tmp_path / "src" / "copia")]) == 2
+    assert _tree_hash(tmp_path / "src") == before and not (tmp_path / "src" / "copia").exists()
+
+
+def test_format_docx_still_needs_layout(tmp_path):
+    src = write_docx(tmp_path / "in.docx", ["x"])
+    assert cli.main(["format", str(src), "-o", str(tmp_path / "o.docx")]) == 2
+
+
+@pytest.mark.needs_xelatex
+def test_format_tex_brings_report_within_limits(tmp_path):
+    from helpmewrite.measure import measure
+
+    main = write_tex_report(tmp_path / "src")
+    layout = compute_layout(load_rules(UNIBO), "Times New Roman")
+    apply_layout_tex(main, layout, tmp_path / "out")
+    m = measure(tmp_path / "out" / "main.tex", load_rules(UNIBO), tmp_path / "work")
+    status = {c.rule: c.ok for c in m.checks}
+    assert status["chars_per_line"] and status["lines_per_page"], m.checks
