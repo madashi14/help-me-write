@@ -135,6 +135,7 @@ def test_parser_builds_every_command():
                 "material": ["w"], "notebook": ["n.ipynb", "-o", "n.md"],
                 "measure": ["x.docx", "--rules", "r.yaml"], "pdftext": ["x.pdf"],
                 "rules": ["validate", "r.yaml"], "texdiff": ["a.tex", "b.tex", "-o", "d.pdf"],
+                "titlepage": ["x.docx", "--values", "v.json", "-o", "y.docx"],
                 "track": ["x.docx", "--edits", "e.json", "-o", "y.docx"]}[name]
         assert parser.parse_args([name] + args).handler
 

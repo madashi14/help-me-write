@@ -42,6 +42,7 @@ _COMMANDS = {
     "rules": ("rules", "add_arguments", "run", True, ("yaml",)),
     "state": ("state", "add_arguments", "run", False, ("yaml",)),
     "texdiff": ("track_tex", "add_texdiff_arguments", "run_texdiff", False, ("lxml",)),
+    "titlepage": ("titlepage", "add_arguments", "run", False, ("lxml", "docx")),
     "track": ("edits", "add_track_arguments", "run_track", False, ("lxml", "docx")),
 }
 
