@@ -653,3 +653,17 @@ def test_unstyled_heading_message_by_source(source, expected):
     pages[2] = page(3, text="1. Introduzione\nIl tirocinio si è svolto")
     by = {c.rule: c for c in check_rules(pages, [], load_rules(UNIBO), source)}
     assert expected in by["section:introduzione:present"].detail
+
+
+def test_section_spans_find_heading_wrapped_over_lines():
+    pages = [page(1, text="Titolo"),
+             page(2, text="Indice\nIntroduzione 3"),
+             page(3, text="1. Introduzione\ntesto"),
+             page(4, text="2. Familiarizzazione con ANSYS e studio prelimi-\nnare\n2.1 Primo\ntesto"),
+             page(5, text="3. Automazione delle simulazioni\nFEM mediante\nPython\ntesto")]
+    spans = section_spans(pages, [
+        {"text": "Introduzione", "heading_level": 1},
+        {"text": "Familiarizzazione con ANSYS e studio preliminare", "heading_level": 1},
+        {"text": "Automazione delle simulazioni FEM mediante Python", "heading_level": 1}])
+    assert [(s.title[:5], s.start_page, s.end_page) for s in spans] == [
+        ("Intro", 3, 3), ("Famil", 4, 4), ("Autom", 5, 5)]

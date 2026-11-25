@@ -385,6 +385,21 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
 
 # --- sections ----------------------------------------------------------------------------
 
+MAX_TITLE_LINES = 3  # a heading wrapped over up to this many lines of a page
+
+
+def _joined_lines(text: str):
+    """The page's lines, and its runs of up to MAX_TITLE_LINES consecutive lines joined by a
+    space (a line ending in a hyphen joins the next one without hyphen or space)."""
+    lines = text.splitlines()
+    for i in range(len(lines)):
+        joined = ""
+        for line in lines[i:i + MAX_TITLE_LINES]:
+            joined = joined[:-1] + line.lstrip() if joined.endswith("-") else (
+                f"{joined} {line}" if joined else line)
+            yield joined
+
+
 def _locate(pages, title: str, first: int) -> int | None:
     """Page of a heading, searching pages >= first, page 1 (title page) only as a fallback.
 
@@ -398,7 +413,7 @@ def _locate(pages, title: str, first: int) -> int | None:
     after_title_page = [p for p in pages if p.number >= max(first, 2)]
     title_page = [p for p in pages if p.number == 1] if first == 1 else []
     for p in after_title_page + title_page:
-        if any(heading_key(line) == key for line in p.text.splitlines()):
+        if any(heading_key(line) == key for line in _joined_lines(p.text)):
             return p.number
     for p in after_title_page:
         if pattern.search(normalize_text(p.text)):
