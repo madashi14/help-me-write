@@ -580,3 +580,85 @@ def write_tex_report(folder, *, running_header=False) -> Path:
     (folder / "capitoli" / "03.tex").write_text(
         "\\chapter{Conclusioni}\n\n" + paragraphs(2, 3) + "\n", encoding="utf-8")
     return main
+
+
+# --- example work folder for the acceptance tests (spec §9 cases 1 and 3) -----------------------
+
+COMMIT_DATES = ("2026-09-15", "2026-10-10", "2026-11-05")
+FACSIMILE_DOCX = HERE.parent.parent / "docs/riferimenti/Facsimile_relazione_di_fine_tirocinio.docx"
+EXAMPLE_TITLE_VALUES = {"start_at": "ALMA MATER STUDIORUM", "replace": [
+    {"find": "Anno Accademico 20…./20….", "with": "Anno Accademico 2025/2026"},
+    {"find": "indicare nome e cognome  (matricola nr.              )",
+     "with": "Mario Rossi (matricola nr. 0000123456)"},
+    {"find": "indicare la denominazione della Struttura Ospitante", "with": "Acme S.r.l."},
+    {"find": "inserire titolo o argomento delle attività di tirocinio",
+     "with": "Diagnostica FEM con ML"}]}
+
+
+def _prose(start, n) -> str:
+    return "\n\n".join(italian_paragraphs(start + n)[start:])
+
+
+def example_chapter_sources() -> dict:
+    """Four chapter sources (Markdown, the assemble format) of about twelve pages in all."""
+    return {
+        "01-introduzione.md": f"# Introduzione\n\n{_prose(0, 4)}\n",
+        "02-attivita.md": (
+            f"# Attività svolte\n\n{_prose(1, 4)}\n\n## Analisi del processo\n\n"
+            f"{_prose(3, 4)} I risultati delle campagne sono nella @fig:metriche.\n\n"
+            "![Accuratezza per campagna](metriche.png){#fig:metriche}\n\n"
+            f"{_prose(5, 3)}\n"),
+        "03-risultati.md": (
+            f"# Risultati\n\n{_prose(2, 3)}\n\n## Confronto\n\n{_prose(4, 5)}\n"),
+        "04-conclusioni.md": f"# Conclusioni\n\n{_prose(6, 4)}\n",
+    }
+
+
+def _git(repo, *args, date=None):
+    import os
+    import subprocess
+
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+    if date:
+        env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = f"{date}T10:00:00+00:00"
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Mario Rossi",
+                    "-c", "user.email=mario@example.org", "-c", "commit.gpgsign=false", *args],
+                   check=True, capture_output=True, env=env)
+
+
+def build_example_work(folder) -> dict:
+    """A made-up internship work folder: Python project with a git history of three commits
+    (2026-09-15, 2026-10-10, 2026-11-05), an Italian CSV (BOM, `;`, decimal comma), a diary,
+    a copy of the Unibo facsimile and the four expected chapter sources. Returns the paths."""
+    import shutil
+
+    folder = Path(folder)
+    project = folder / "progetto"
+    (project / "analisi").mkdir(parents=True)
+    _git(project, "init", "-q")
+    steps = [("analisi/__init__.py", '"""Analisi dei dati di tirocinio."""\n'),
+             ("analisi/metriche.py", "def media(valori):\n    return sum(valori) / len(valori)\n"),
+             ("README.md", "# Analisi\n\nPacchetto per confrontare le campagne di prova.\n")]
+    for (name, text), date in zip(steps, COMMIT_DATES):
+        (project / name).write_text(text, encoding="utf-8")
+        _git(project, "add", name)
+        _git(project, "commit", "-q", "-m", f"Aggiunge {name}", date=date)
+    data = folder / "dati"
+    data.mkdir()
+    csv = data / "metriche.csv"
+    csv.write_text("campagna;accuracy;f1\nbase;0,808;0,790\nottimizzata;0,865;0,851\n"
+                   "finale;0,912;0,904\n", encoding="utf-8-sig")
+    diary = folder / "diario.md"
+    diary.write_text("# Diario di tirocinio\n\n- 15/09/2026: primo giorno, accesso ai sistemi.\n"
+                     "- 10/10/2026: prima campagna di prova.\n"
+                     "- 05/11/2026: confronto finale delle campagne.\n", encoding="utf-8")
+    facsimile = folder / FACSIMILE_DOCX.name
+    shutil.copy(FACSIMILE_DOCX, facsimile)
+    sources = folder / "attesi" / "capitoli"
+    sources.mkdir(parents=True)
+    chapters = []
+    for name, text in example_chapter_sources().items():
+        (sources / name).write_text(text, encoding="utf-8")
+        chapters.append(sources / name)
+    return {"folder": folder, "project": project, "csv": csv, "diary": diary,
+            "facsimile": facsimile, "sources": sources, "chapters": chapters}
