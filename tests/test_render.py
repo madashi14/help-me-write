@@ -243,11 +243,16 @@ def test_fontspec_document_compiles_with_xelatex(tmp_path):
     assert render_pdf(main, tmp_path / "w").read_bytes().startswith(b"%PDF")
 
 
-@needs_soffice
-def test_render_accepts_changes_without_settings_part(tmp_path):
-    import zipfile
+_SETTINGS_OVERRIDE = (b'<Override PartName="/word/settings.xml" ContentType="application/vnd.'
+                      b'openxmlformats-officedocument.wordprocessingml.settings+xml"/>')
+_SETTINGS_REL = (b'<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/'
+                 b'officeDocument/2006/relationships/settings" Target="settings.xml"/>')
 
-    import pdfplumber
+
+def _docx_without_settings(tmp_path, keep_override=False, keep_rel=False, drop_rels=False):
+    """A docx with a tracked deletion and insertion and no word/settings.xml."""
+    import re
+    import zipfile
 
     src = write_docx(tmp_path / "t.docx", ["Testo di base."])
     body = ('<w:p><w:r><w:t>Inizio </w:t></w:r>'
@@ -259,22 +264,56 @@ def test_render_accepts_changes_without_settings_part(tmp_path):
     with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w") as zout:
         for item in zin.infolist():
             data = zin.read(item)
-            if item.filename == "word/settings.xml":
+            name = item.filename
+            if name == "word/settings.xml" or (drop_rels and name == "word/_rels/document.xml.rels"):
                 continue
-            if item.filename == "[Content_Types].xml":
-                data = data.replace(
-                    b"</Types>",
-                    b'<Override PartName="/word/settings.xml" ContentType="x"/></Types>')
-                import re
+            if name == "[Content_Types].xml":
                 data = re.sub(rb'<Override PartName="/word/settings.xml"[^>]*/>', b"", data)
-            if item.filename == "word/_rels/document.xml.rels":
-                import re
+                if keep_override:
+                    data = data.replace(b"</Types>", _SETTINGS_OVERRIDE + b"</Types>")
+            if name == "word/_rels/document.xml.rels":
                 data = re.sub(rb"<Relationship [^>]*relationships/settings[^>]*/>", b"", data)
-            if item.filename == "word/document.xml":
-                text = data.decode("utf-8")
-                text = text.replace("<w:body>", "<w:body>" + body, 1)
-                data = text.encode("utf-8")
+                if keep_rel:
+                    data = data.replace(b"</Relationships>", _SETTINGS_REL + b"</Relationships>")
+            if name == "word/document.xml":
+                data = data.decode("utf-8").replace("<w:body>", "<w:body>" + body, 1).encode()
             zout.writestr(item, data)
+    return out
+
+
+@pytest.mark.parametrize("keep_override,keep_rel",
+                         [(False, False), (True, False), (False, True), (True, True)])
+def test_accepted_copy_adds_settings_part_once(tmp_path, keep_override, keep_rel):
+    import zipfile
+
+    out = _docx_without_settings(tmp_path, keep_override, keep_rel)
+    view = tmp_path / "view"
+    view.mkdir()
+    copy = render._accepted_copy(out, view)
+    assert copy != out
+    with zipfile.ZipFile(copy) as z:
+        assert z.namelist().count("word/settings.xml") == 1
+        types = z.read("[Content_Types].xml").decode()
+        rels = z.read("word/_rels/document.xml.rels").decode()
+        assert b"revisionView" in z.read("word/settings.xml")
+    assert types.lower().count('partname="/word/settings.xml"') == 1
+    assert rels.count("relationships/settings") == 1
+
+
+def test_accepted_copy_without_rels_part_falls_back_to_the_original(tmp_path):
+    out = _docx_without_settings(tmp_path, drop_rels=True)
+    view = tmp_path / "view"
+    view.mkdir()
+    assert render._accepted_copy(out, view) == out
+
+
+@needs_soffice
+def test_render_accepts_changes_without_settings_part(tmp_path):
+    import zipfile
+
+    import pdfplumber
+
+    out = _docx_without_settings(tmp_path)
     with zipfile.ZipFile(out) as z:
         assert "word/settings.xml" not in z.namelist()
     pdf = render_pdf(out, tmp_path / "work")

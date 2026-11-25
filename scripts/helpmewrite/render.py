@@ -137,6 +137,8 @@ _SETTINGS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relations
 
 def _with_settings_override(xml: bytes) -> bytes:
     text = xml.decode("utf-8")
+    if re.search(r'PartName="/word/settings\.xml"', text, re.I):
+        return xml
     at = text.rfind("</")
     if at < 0:
         raise ValueError("no content types")
@@ -146,6 +148,11 @@ def _with_settings_override(xml: bytes) -> bytes:
 
 def _with_settings_relation(xml: bytes) -> bytes:
     text = xml.decode("utf-8")
+    for rel in re.findall(r"<Relationship\b[^>]*>", text):
+        if re.search(r'Type="[^"]*/relationships/settings"', rel):
+            if re.search(r'Target="(?:/word/|\./)?settings\.xml"', rel):
+                return xml  # already points at the part
+            raise ValueError("settings relationship points elsewhere")
     at = text.rfind("</")
     if at < 0:
         raise ValueError("no relationships")
@@ -171,6 +178,8 @@ def _accepted_copy(src: Path, folder: Path) -> Path:
                     return src
             else:
                 settings = _NEW_SETTINGS
+                if not {"[Content_Types].xml", "word/_rels/document.xml.rels"} <= set(names):
+                    return src
             with zipfile.ZipFile(dst, "w") as zout:
                 for item in zin.infolist():
                     data = zin.read(item)
