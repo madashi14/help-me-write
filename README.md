@@ -6,12 +6,23 @@ propone le correzioni come revisioni tracciate, senza mai modificare l'originale
 
 ## Requisiti
 
-- Python 3.10 o superiore
-- Dipendenze Python: `pip install -r requirements.txt`
-  (su Python di sistema Debian/Ubuntu, `bibtexparser` può richiedere `pip install --use-pep517 bibtexparser`)
+- Python 3.10 o superiore.
+- Dipendenze Python, da installare con lo stesso Python che userà l'assistente:
+
+  ```
+  python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2"
+  ```
+
+  - Se pip risponde `externally-managed-environment` (PEP 668: Python di sistema su
+    Debian/Ubuntu, Homebrew), installa in un ambiente virtuale (`python -m venv`) e avvia
+    l'assistente con quell'ambiente attivo.
+  - Su Python di sistema Debian/Ubuntu, `bibtexparser` può richiedere
+    `python -m pip install --use-pep517 "bibtexparser>=1.4,<2"`.
+  - Da un clone del repository basta `python -m pip install -r requirements.txt`.
 - Opzionali: LibreOffice (conversione in PDF e misura dell'impaginazione), `latexmk` e
   `latexdiff` (documenti LaTeX). Si installano da https://www.libreoffice.org/download/ e
-  https://tug.org/texlive/.
+  https://tug.org/texlive/. Per i progetti con `fontspec` o `polyglossia` serve anche
+  XeLaTeX o LuaLaTeX (inclusi in TeX Live).
 
 ## Installazione
 
@@ -40,13 +51,15 @@ prova è in `tests/scenari/codex.md`.
 
 ## Verificare l'ambiente
 
-```
-python scripts/hmw.py doctor
-python scripts/hmw.py doctor --json
-```
+Chiedi all'assistente, ad esempio: "Esegui il controllo dell'ambiente di help-me-write
+(doctor)". L'assistente lo lancia dal percorso in cui è installato il plugin; le skill lo
+lanciano comunque all'inizio di ogni revisione. Da un clone del repository:
+`python scripts/hmw.py doctor` (`--json` per l'output JSON).
 
 `doctor` elenca versione di Python, pacchetti e strumenti esterni, e per ciò che manca
-indica a cosa serve e come installarlo.
+indica a cosa serve e il comando per installarlo (con il percorso assoluto del plugin).
+Funziona anche prima di installare le dipendenze; con un Python più vecchio della 3.10 il
+comando si ferma subito e lo dice.
 
 Per Word serve LibreOffice (misura dell'impaginazione e copia formattata); per LaTeX
 servono `latexmk` e `latexdiff`.
@@ -69,8 +82,9 @@ bozza.docx".
 - `revisione`: rivede una bozza finita (`.docx`, `.tex` o `.pdf`). Produce
   `<nome>-revisionato.docx` con correzioni tracciate e commenti, la copia
   `<nome>-revisionato-formattato.docx` con l'impaginazione corretta, per LaTeX la cartella
-  `<nome>-revisionato/` e `<nome>-differenze.pdf`, e il rapporto in
-  `.help-me-write/revisioni/<data-ora>/rapporto.md`. L'originale non viene mai modificato.
+  `<nome>-revisionato/` e `<nome>-differenze.pdf` accanto alla cartella del progetto, e il
+  rapporto in `.help-me-write/revisioni/<data-ora>/rapporto.md`. L'originale non viene mai
+  modificato, e nessun file già esistente viene sovrascritto.
 - `revisione-bibliografia`: controlla citazioni, fonti e bibliografia (citazioni non
   supportate dalla fonte, voci inventate o errate, affermazioni senza citazione), con
   commenti in Word. Parte anche dentro `revisione`. Online invia solo titoli, autori e
@@ -86,5 +100,8 @@ figure. Non è ancora disponibile.
 
 ## Comandi
 
-`python scripts/hmw.py <comando>`: `doctor`, `extract`, `rules`, `layout`, `format`,
-`measure`, `track`, `texdiff`, `bib`, `pdftext`. Con `--json` l'output è JSON.
+`python <cartella del plugin>/scripts/hmw.py <comando>`: `doctor`, `extract`, `rules`,
+`layout`, `format`, `measure`, `track`, `texdiff`, `bib`, `pdftext`. Con `--json` l'output
+è JSON. Exit code: 0 ok; 1 controlli non superati (`measure`) o correzioni non applicate
+(`track`); 2 errore d'uso o file non valido (anche: file di uscita già esistente, che non
+viene mai sovrascritto); 3 strumento esterno o pacchetto Python mancante.

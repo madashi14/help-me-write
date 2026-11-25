@@ -2,9 +2,14 @@
 
 ## Prima di cominciare
 
-1. Installa il plugin e le dipendenze come nel `README.md`.
-2. Controlla l'ambiente: `python scripts/hmw.py doctor` dice cosa manca (LibreOffice per
-   Word, `latexmk` e `latexdiff` per LaTeX).
+1. Installa il plugin e le dipendenze Python come nel `README.md`:
+   `python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2"`
+   (con l'errore `externally-managed-environment`, in un ambiente virtuale creato con
+   `python -m venv`).
+2. Controlla l'ambiente: chiedi all'assistente "Esegui il controllo dell'ambiente di
+   help-me-write (doctor)". Dice cosa manca (pacchetti Python, LibreOffice per Word,
+   `latexmk` e `latexdiff` per LaTeX) e il comando per installarlo. Le skill lo eseguono
+   comunque all'inizio di ogni revisione.
 3. Metti la bozza in una cartella di lavoro. Le fonti della bibliografia (PDF) possono
    stare nella stessa cartella o in sue sottocartelle. Aggiungi le linee guida
    (facsimile, regolamento) se le hai.
@@ -30,16 +35,18 @@ comandi `python`: puoi consentirli per la sessione.
 
 ## Dove trovare i file prodotti
 
-I file vengono creati accanto all'originale, che non viene mai modificato. Se un nome è
-già usato si aggiunge `-2`, `-3`, ...
+I file vengono creati accanto all'originale, che non viene mai modificato. Un file già
+esistente non viene mai sovrascritto: se un nome è già usato (ad esempio la copia di una
+revisione precedente, su cui magari hai già accettato o rifiutato delle modifiche) si
+aggiunge `-2`, `-3`, ...
 
 | Bozza | Prodotti |
 |---|---|
 | `bozza.docx` | `bozza-revisionato.docx` (revisioni tracciate e commenti); `bozza-revisionato-formattato.docx` (impaginazione corretta) |
-| `.tex` nella cartella `bozza` | cartella `bozza-revisionato/`; `bozza-differenze.pdf` (differenze evidenziate) |
+| `.tex` nella cartella `bozza` | accanto alla cartella `bozza`: la cartella `bozza-revisionato/` e `bozza-differenze.pdf` (differenze evidenziate) |
 | `.pdf` | solo il rapporto |
 
-Il rapporto è `.help-me-write/revisioni/<AAAA-MM-GG-HHMM>/rapporto.md`: riepilogo, modifiche
+Il rapporto è `.help-me-write/revisioni/<AAAA-MM-GG-HHMMSS>/rapporto.md`: riepilogo, modifiche
 fatte, controlli di forma prima e dopo, sezione bibliografia, correzioni da fare a mano e
 domande per te. Nella stessa cartella ci sono i file di lavoro (`extract.json`,
 `measure.json`, le note dei revisori).
@@ -66,10 +73,13 @@ misura di nuovo. Il ciclo di risposte è al massimo di 2 giri; poi decidi tu.
 
 ## Bibliografia e rete
 
-Il revisore della bibliografia legge le tue fonti in locale. Online usa la ricerca e la
-lettura di pagine solo se l'ambiente le offre, e invia solo titoli, autori e DOI, mai il
-testo della bozza. Senza rete le citazioni che non può controllare sono segnate "non
-verificabile". Non inserisce mai fonti che non ha verificato.
+Il revisore della bibliografia legge le tue fonti in locale: i PDF nella cartella di
+lavoro e nelle sue sottocartelle. Non usa mai come fonte la bozza stessa: il PDF esportato
+della bozza (`bozza.pdf`), le copie `-revisionato` e `-formattato`, i PDF `-differenze` e
+le cartelle `-revisionato`. Online usa la ricerca e la lettura di pagine solo se
+l'ambiente le offre, e invia solo titoli, autori e DOI, mai il testo della bozza. Senza
+rete le citazioni che non può controllare sono segnate "non verificabile". Non inserisce
+mai fonti che non ha verificato.
 
 ## Limiti noti
 
@@ -80,7 +90,16 @@ verificabile". Non inserisce mai fonti che non ha verificato.
   cambia solo la versione moderna della casella.
 - Una correzione che cade su un collegamento o su un campo (ad esempio una citazione
   Zotero) non viene applicata: compare tra le correzioni da fare a mano.
-- Il ciclo di risposte è al massimo di 2 giri.
+- Il ciclo di risposte è al massimo di 2 giri, e non è ancora stato provato da uno
+  scenario automatico (gli scenari provano la prima revisione).
+- Per LaTeX (e per una bozza in PDF) le sezioni obbligatorie e la loro lunghezza non
+  vengono controllate: il rapporto le segna "non determinabile", da verificare a mano.
+- Un titolo scritto come testo normale (ad esempio in grassetto) invece che con uno stile
+  Titolo viene trovato, ma la lunghezza della sua sezione non si può misurare: il
+  rapporto suggerisce di applicare lo stile.
+- Righe per pagina e caratteri per riga si misurano solo sulle pagine piene di testo: le
+  pagine con titoli, figure o tabelle, il frontespizio e l'ultima pagina sono escluse, e
+  il rapporto dice quali.
 - Il supporto Codex non è ancora verificato su un'installazione reale
   (`tests/scenari/codex.md`).
 - Word non è stato provato direttamente: sono stati verificati il passaggio da

@@ -20,18 +20,22 @@ cannot correct from the document itself becomes a question.
   where `python` is not Python 3), written `hmw` below. Quote every path: names with
   spaces and accents are common. Run each command on its own, not chained with `&&` or
   `;`: permission rules match single commands.
-- `<doc>` is the reviewed document; `<work>` its folder (for LaTeX, the folder of the main
-  `.tex`), where `.help-me-write/` lives. Each review writes its files in a new folder
-  `<work>/.help-me-write/revisioni/<YYYY-MM-DD-HHMM>/` (local time, e.g. from
-  `python -c "import datetime; print(datetime.datetime.now().strftime('%Y-%m-%d-%H%M'))"`),
+- `<doc>` is the reviewed document; `<work>` its folder (for LaTeX, the project folder:
+  the folder of the main `.tex`), where `<work>/.help-me-write/` lives; `<parent>` the
+  folder that holds a LaTeX project folder. Write them as absolute paths in every
+  command: the current folder of your shell may differ.
+- Each review writes its files in a new folder
+  `<work>/.help-me-write/revisioni/<YYYY-MM-DD-HHMMSS>/` (local time, e.g. from
+  `python -c "import datetime; print(datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S'))"`),
   written `<rev>` below.
-- Copies go next to the original and never replace a file: when a name is taken, add
-  `-2`, `-3`, … before the extension (`bozza-revisionato-2.docx`).
+- Copies never replace a file: when a name is taken, add `-2`, `-3`, … before the
+  extension (`bozza-revisionato-2.docx`). `track`, `format` and `texdiff` refuse an
+  output that exists and name the next free one.
 
 | Draft | Corrected copy | Also |
 |---|---|---|
-| `<name>.docx` | `<name>-revisionato.docx`: tracked changes and comments | `<name>-revisionato-formattato.docx` (step 8) |
-| main `.tex` in folder `<name>` | folder `<name>-revisionato` beside folder `<name>` | `<name>-differenze.pdf` beside it |
+| `<work>/<name>.docx` | `<work>/<name>-revisionato.docx`: tracked changes and comments | `<work>/<name>-revisionato-formattato.docx` (step 8) |
+| main `.tex` in the project folder `<parent>/<name>` | folder `<parent>/<name>-revisionato`, beside the project | `<parent>/<name>-differenze.pdf` |
 | `.pdf` | none: report only (see below) | |
 
 ## Steps
@@ -39,13 +43,13 @@ cannot correct from the document itself becomes a question.
 1. **Find the document and check the tools.** Use the file the user names. Otherwise
    look in the current folder for `.docx`, `.tex` and `.pdf` drafts, leaving out the
    guidelines, files ending in `-revisionato`, `-formattato` or `-differenze`, and
-   `.help-me-write/`. One: use it. Several: ask the user which. For LaTeX use the main
-   file (the one with `\documentclass`). Run `hmw doctor`. Needed: every Python package;
-   `soffice` for `.docx`; `latexmk` and `latexdiff` for `.tex`. If one is missing, tell the
-   user how to install it (the `doctor` output says) and stop.
+   `<work>/.help-me-write/`. One: use it. Several: ask the user which. For LaTeX use the
+   main file (the one with `\documentclass`). Run `hmw doctor`. Needed: every Python
+   package; `soffice` for `.docx`; `latexmk` and `latexdiff` for `.tex`. If one is
+   missing, tell the user how to install it (the `doctor` output says) and stop.
 2. **Guidelines.** Follow the [linee-guida](../linee-guida/SKILL.md) skill with `<work>` as
-   its work folder: it asks whether an existing `.help-me-write/linee-guida.yaml` is still
-   valid, or builds it. Its `document_type` names the profile
+   its work folder: it asks whether an existing `<work>/.help-me-write/linee-guida.yaml`
+   is still valid, or builds it. Its `document_type` names the profile
    `<this skill's directory>/../../profili/<document_type>.md` (`generico.md` if that file
    does not exist) and `language` the document's language.
 3. **Extract and measure.** Create the folder `<rev>`, then run:
@@ -63,7 +67,8 @@ cannot correct from the document itself becomes a question.
 4. **Bibliography reviewer, in parallel.** When the profile has a `## Citation needs`
    section, or the document has citations or a bibliography section, also run steps 3
    and 4 of the [revisione-bibliografia](../revisione-bibliografia/SKILL.md) skill, with
-   `<work>` as its work folder (its sources are the PDFs there), this `<rev>` for its
+   `<work>` as its work folder (its sources are the PDFs there, never the document's
+   own), this `<rev>` for its
    outputs, and the guidelines and profile of step 2. Its step 3 writes `<rev>/bib.json`
    (`extract.json` exists already); its reviewer, dispatched with its own prompt, writes
    `<rev>/edits-bibliografia.json` and `<rev>/note-bibliografia.md`. Its own track and
@@ -85,20 +90,29 @@ cannot correct from the document itself becomes a question.
 
    `hmw track "<doc>" --edits "<rev>/edits-revisore.json" --edits "<rev>/edits-bibliografia.json" -o "<copy>" --json`
 
+   - `<copy>` is `<work>/<name>-revisionato.docx`; for LaTeX the folder
+     `<parent>/<name>-revisionato`, beside the project folder.
    - Exit 0: all applied. Exit 1: the copy is written; some edits failed or conflicted.
-     Exit 2: an edits file is invalid: fix only what the listed problems name (a missing
-     `reason`, an unknown key), never what an edit says, and run it again.
-   - LaTeX: `<copy>` is the folder `<name>-revisionato`; then run
-     `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<name>-differenze.pdf"`. Comments
-     are not written into LaTeX sources: the report lists them with file and line.
+     Exit 2: nothing was written; read the error message: an invalid edits file (fix
+     only what the listed problems name, a missing `reason` or an unknown key, never
+     what an edit says, and run it again), a missing document, an output that already
+     exists (use the next free name the message gives), an unwritable folder.
+   - LaTeX: then run
+     `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<parent>/<name>-differenze.pdf"`.
+     Exit 2: read the error message (the LaTeX does not compile: its first errors are
+     quoted; the output already exists: use the next free name); exit 3: `latexmk` or
+     `latexdiff` is missing. Comments are not written into LaTeX sources: the report
+     lists them with file and line.
 7. **Edits not applied.** Every entry of `failed` and `conflicts` carries its edit. Each
    goes in the report's "To fix by hand": where, the text, the intended change or
    comment, and why it was not applied in plain words ("not found": the text differs;
    "ambiguous": the text occurs twice; a link, field or earlier revision is in the way).
 8. **Formatted copy.** For a `.docx` with a `layout.json` from step 3, run
-   `hmw format "<copy>" --layout "<rev>/layout.json" -o "<copy name>-formattato.docx" --json`,
-   then measure the result into `<rev>/measure-formattato.json` (as in step 3, `--workdir
-   "<rev>/pdf-formattato"`), so the report shows the form before and after.
+   `hmw format "<copy>" --layout "<rev>/layout.json" -o "<work>/<copy name>-formattato.docx" --json`
+   (`<copy name>`: the copy's file name without `.docx`). Exit 2: read the error message
+   (the output already exists: use the next free name). Then measure the result:
+   `hmw measure "<work>/<copy name>-formattato.docx" --rules "<work>/.help-me-write/linee-guida.yaml" --workdir "<rev>/pdf-formattato" -o "<rev>/measure-formattato.json"`,
+   so the report shows the form before and after.
 9. **Report.** Write `<rev>/rapporto.md` following `./modello-rapporto.md`, in the user's
    language. What changed comes from the edits files themselves (their `find`, `replace`,
    `comment` and `reason`) minus the edits in `failed` and `conflicts`; never reconstruct
@@ -109,9 +123,9 @@ cannot correct from the document itself becomes a question.
 11. **Answers: at most two cycles.** When the user answers the questions, run a cycle
     (spec §6.3: apply the corrections, measure again):
     1. Start a new `<rev>` and write the answers, verbatim, to `<rev>/risposte.md`.
-    2. `<last>` is the newest corrected copy, `<name>-revisionato.docx` or
-       `<name>-revisionato-<N>.docx` with the highest N (for LaTeX the main `.tex` in
-       the newest `-revisionato` folder), never a `-formattato` copy.
+    2. `<last>` is the newest corrected copy, `<work>/<name>-revisionato.docx` or
+       `<work>/<name>-revisionato-<N>.docx` with the highest N (for LaTeX the main `.tex`
+       in the newest `<parent>/<name>-revisionato…` folder), never a `-formattato` copy.
     3. Run step 3 on `<last>` into the new `<rev>` (`extract.json`, `measure.json`), and
        copy the previous `<rev>/layout.json` there if there is one, without asking for
        the font again.
@@ -139,7 +153,9 @@ source would get them as tracked changes.
 - Writing, improving or dropping the reviewers' edits yourself. The only change allowed
   is a format fix that `track` asks for.
 - One `track` per reviewer, or an output name that already exists: one command with
-  every `--edits`, and a new file name.
+  every `--edits`, and a new file name (the next free one).
+- A path in a command without `<work>/`, `<parent>/` or `<rev>/` in front: the shell's
+  current folder may not be `<work>`; write every path in full, quoted.
 - Listing what changed from the `applied` indices instead of the edits files.
 - Copying a password or other secret from the document into the report or the chat:
   name where it is instead.

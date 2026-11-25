@@ -182,3 +182,92 @@ def test_profile_default_guidelines_are_valid_rules(profile):
     assert block, f"{profile.name}: no ```yaml block under ## Default guidelines"
     rules = parse_rules(yaml.safe_load(block.group(1)))
     assert rules.document_type == profile.stem
+
+
+# --- command lines in skills and prompts (final review, recommendation 3) ---------------
+
+PROMPTS = [ROOT / "skills" / "revisione" / "prompt-revisore.md",
+           ROOT / "skills" / "revisione-bibliografia" / "prompt-revisore-bibliografia.md"]
+_HMW_TOKEN = re.compile(r"(?:^|\s)(?:hmw|\{HMW\}|\S*scripts/hmw\.py)\s+(?!<command>)\S")
+_PATH_OPTIONS = {"-o", "--output", "--rules", "--workdir", "--layout", "--edits", "--sources",
+                 "--bib"}
+
+
+def command_lines(text: str) -> list[str]:
+    """`hmw <cmd> …`, `{HMW} <cmd> …` and `…/scripts/hmw.py <cmd> …` in code spans and in
+    fenced blocks (one per line); the generic `hmw.py <command>` is left out."""
+    candidates = [line for block in _FENCE.findall(text) for line in block.splitlines()]
+    candidates += _CODE_SPAN.findall(_FENCE.sub("", text))
+    return [c.strip() for c in candidates if _HMW_TOKEN.search(c)]
+
+
+def hmw_arguments(line: str) -> list[str]:
+    """The arguments after hmw, placeholders replaced by dummy values."""
+    import shlex
+
+    line = line.replace("{HMW}", "hmw")
+    line = re.sub(r"<[^<>]*>", "x", line)
+    line = re.sub(r"\{[A-Z_]+\}", "x", line)
+    tokens = shlex.split(line)
+    start = next(i for i, t in enumerate(tokens) if t == "hmw" or t.endswith("hmw.py"))
+    return tokens[start + 1:]
+
+
+def _documents():
+    return SKILLS + PROMPTS
+
+
+@pytest.mark.parametrize("document", _documents(), ids=lambda p: f"{p.parent.name}/{p.name}")
+def test_skill_command_lines_parse(document):
+    from helpmewrite import cli
+
+    parser = cli._build_parser()
+    lines = command_lines(document.read_text(encoding="utf-8"))
+    if document.name == "SKILL.md" or "bibliografia" in document.name:
+        assert lines, f"{document}: no hmw command found"
+    for line in lines:
+        try:
+            parser.parse_args(hmw_arguments(line))
+        except SystemExit:
+            pytest.fail(f"{document.name}: the CLI rejects `{line}`")
+
+
+def test_command_line_helpers():
+    text = ("Run `hmw doctor` and `python <this skill's directory>/../../scripts/hmw.py "
+            "<command>`.\n```\nhmw track \"<doc>\" --edits \"<rev>/e.json\" -o \"<copy>\"\n```\n"
+            "Read with `{HMW} pdftext \"<file>.pdf\" -o \"{SOURCE_TEXTS}/<file name>.json\"`.")
+    lines = command_lines(text)
+    assert lines == ['hmw track "<doc>" --edits "<rev>/e.json" -o "<copy>"', "hmw doctor",
+                     '{HMW} pdftext "<file>.pdf" -o "{SOURCE_TEXTS}/<file name>.json"']
+    assert hmw_arguments(lines[2]) == ["pdftext", "x.pdf", "-o", "x/x.json"]
+
+
+@pytest.mark.parametrize("skill_md", SKILLS, ids=lambda p: p.parent.name)
+def test_skill_paths_are_anchored(skill_md):
+    """Paths in commands are absolute placeholders: the shell's folder may not be <work>."""
+    _, body = _split(skill_md)
+    spans = _CODE_SPAN.findall(_FENCE.sub("", body))
+    for span in spans:
+        for m in re.finditer(r"\.help-me-write/", span):
+            assert span[:m.start()].endswith("<work>/"), f"{skill_md.parent.name}: `{span}`"
+        for m in re.finditer(r"(?<![\w>/])\.\./\.\./profili/", span):
+            assert span[:m.start()].endswith("<this skill's directory>/"), span
+    for line in command_lines(body):
+        tokens = line.split()
+        for option, value in zip(tokens, tokens[1:]):
+            if option in _PATH_OPTIONS:
+                assert re.match(r'"(<work>|<rev>|<parent>|<copy>|<sources>|<bibfile>)', value), \
+                    f"{skill_md.parent.name}: {option} {value} in `{line}`"
+
+
+@pytest.mark.parametrize("skill_md", [ROOT / "skills" / "revisione" / "SKILL.md",
+                                      ROOT / "skills" / "revisione-bibliografia" / "SKILL.md"],
+                         ids=lambda p: p.parent.name)
+def test_review_folder_has_seconds_and_latex_outputs_beside_the_project(skill_md):
+    _, body = _split(skill_md)
+    assert "<YYYY-MM-DD-HHMMSS>" in body and "%Y-%m-%d-%H%M%S" in body
+    assert "HHMM>" not in body and "%H%M'" not in body
+    assert '-o "<parent>/<name>-differenze.pdf"' in body
+    assert "`<parent>/<name>-revisionato`" in body
+    flat = " ".join(body.split())
+    assert "output that already exists (use the next free name the message gives)" in flat

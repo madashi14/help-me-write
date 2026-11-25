@@ -60,7 +60,7 @@ claude -p --plugin-dir <tmp>/plugin --add-dir <tmp>/plugin --allowedTools "Bash(
 Pass/fail, all checked by `check_revisione.py`:
 
 1. `bozza.docx` is unchanged (sha256 from setup).
-2. The newest folder `.help-me-write/revisioni/<YYYY-MM-DD-HHMM>/` has `extract.json`,
+2. The newest folder `.help-me-write/revisioni/<YYYY-MM-DD-HHMMSS>/` has `extract.json`,
    `measure.json`, `edits-revisore.json`, `note-revisore.md` (sections `## Form`,
    `## Content`, `## Questions for the author`), `edits.json` and `rapporto.md`.
 3. `rapporto.md` reports every defect:

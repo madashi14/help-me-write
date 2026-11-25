@@ -21,14 +21,18 @@ added that nobody read, and no citation is called verified that was not.
   where `python` is not Python 3), written `hmw` below. Quote every path: names with
   spaces and accents are common. Run each command on its own, not chained with `&&` or
   `;`: permission rules match single commands.
-- `<doc>`, `<work>`, `<rev>` and the names of the copies are those of the
+- `<doc>`, `<work>`, `<parent>`, `<rev>` and the names of the copies are those of the
   [revisione](../revisione/SKILL.md) skill: the document; its folder (for LaTeX, the
-  folder of the main `.tex`), where `.help-me-write/` lives; and a new folder
-  `<work>/.help-me-write/revisioni/<YYYY-MM-DD-HHMM>/` for this review's files (local
+  project folder: the folder of the main `.tex`), where `<work>/.help-me-write/` lives;
+  the folder that holds a LaTeX project folder; and a new folder
+  `<work>/.help-me-write/revisioni/<YYYY-MM-DD-HHMMSS>/` for this review's files (local
   time, e.g. from
-  `python -c "import datetime; print(datetime.datetime.now().strftime('%Y-%m-%d-%H%M'))"`).
+  `python -c "import datetime; print(datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S'))"`).
+  Write them as absolute paths in every command: the current folder of your shell may
+  differ.
 - `<sources>` is where the sources are: `<work>` (all its subfolders are searched), or the
-  folder the user names for them.
+  folder the user names for them. The document's own PDFs there (its PDF export, the
+  copies, `*-differenze.pdf`) are never sources: `bib` lists them in `excluded_sources`.
 - Alone, run every step. The [revisione](../revisione/SKILL.md) skill runs only steps 3
   and 4, with its own `<doc>`, `<work>`, `<rev>`, guidelines and profile, and applies the
   edits and writes the report itself.
@@ -43,9 +47,10 @@ added that nobody read, and no citation is called verified that was not.
 2. **Profile and guidelines.** If `<work>/.help-me-write/linee-guida.yaml` exists, it is
    the guidelines, and its `document_type` names the profile
    `<this skill's directory>/../../profili/<document_type>.md` (`generico.md` if that file
-   does not exist). Otherwise read `## Recognize` in each file of `../../profili/`,
-   propose the profile that matches (`generico` if none does) and ask the user to confirm
-   it; the guidelines are then `none`. Do not build the guidelines only for this check.
+   does not exist). Otherwise read `## Recognize` in each file of
+   `<this skill's directory>/../../profili/`, propose the profile that matches
+   (`generico` if none does) and ask the user to confirm it; the guidelines are then
+   `none`. Do not build the guidelines only for this check.
    The profile's `## Citation needs` is the reviewer's criterion for what needs a
    citation.
 3. **Extract and list the citations.** Create the folder `<rev>` if it does not exist.
@@ -65,20 +70,23 @@ added that nobody read, and no citation is called verified that was not.
    (or `python3`) followed by the quoted absolute path of `hmw.py`; the document's
    language and the user's language. Dispatch a fresh subagent with the filled prompt as
    its whole task: no conversation, no summary of how the document was written, no
-   opinion of yours. It runs `hmw pdftext`, and web search and fetch tools if it has
-   them. If you cannot dispatch subagents, do the review yourself, reading only the
-   files and sources the prompt lists.
+   opinion of yours. It reads the PDFs with the `pdftext` command (into `<rev>/fonti`),
+   and uses web search and fetch tools if it has them. If you cannot dispatch subagents,
+   do the review yourself, reading only the files and sources the prompt lists.
 5. **Apply the edits** (alone). When the reviewer has finished:
 
    `hmw track "<doc>" --edits "<rev>/edits-bibliografia.json" -o "<copy>" --json`
 
-   - `<copy>` is `<name>-revisionato.docx` next to the original, or the next free name
-     (`-2`, `-3`, …); for LaTeX the folder `<name>-revisionato` beside the project
-     folder, then `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<name>-differenze.pdf"`.
+   - `<copy>` is `<work>/<name>-revisionato.docx`, or the next free name (`-2`, `-3`, …);
+     for LaTeX the folder `<parent>/<name>-revisionato`, beside the project folder, then
+     `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<parent>/<name>-differenze.pdf"`
+     (exit 2: read the error message; exit 3: `latexmk` or `latexdiff` is missing).
      LaTeX sources get no comments: the report lists them with file and line.
    - Exit 0: all applied. Exit 1: the copy is written; some edits failed or conflicted.
-     Exit 2: the edits file is invalid: fix only what the listed problems name (a
-     missing `reason`, an unknown key), never what an edit says, and run it again.
+     Exit 2: nothing was written; read the error message: an invalid edits file (fix
+     only what the listed problems name, a missing `reason` or an unknown key, never
+     what an edit says, and run it again), a missing document, an output that already
+     exists (use the next free name the message gives), an unwritable folder.
 6. **Report** (alone). Write `<rev>/rapporto.md` in the user's language with the title
    lines of [modello-rapporto](../revisione/modello-rapporto.md) (reviewers:
    bibliography only), a summary of a few lines (files produced; corrections, comments,

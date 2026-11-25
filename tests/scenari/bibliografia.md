@@ -67,7 +67,7 @@ claude -p --plugin-dir <tmp>/plugin --add-dir <tmp>/plugin --allowedTools "Bash(
 Pass/fail, all checked by `check_bibliografia.py`:
 
 1. `bozza-bib.docx` and the two PDFs are unchanged (sha256 from setup).
-2. The newest folder `.help-me-write/revisioni/<YYYY-MM-DD-HHMM>/` with
+2. The newest folder `.help-me-write/revisioni/<YYYY-MM-DD-HHMMSS>/` with
    `note-bibliografia.md` also has `bib.json`, `edits-bibliografia.json` and
    `rapporto.md`; with `--combined`, also the files of the `revisione` skill
    (`extract.json`, `measure.json`, `edits-revisore.json`, `note-revisore.md`, `edits.json`,
