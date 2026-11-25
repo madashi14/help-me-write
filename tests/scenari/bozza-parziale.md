@@ -37,7 +37,7 @@ python <repo>/tests/scenari/check_bozza_parziale.py --setup <tmp>
   - the guideline says "tra 10 e 30 pagine circa" and the user wants the 30 pages (the
     `source` of the fixture does not exist in the work folder, so the agent cannot read
     the sentence anywhere else);
-  - timeline: weeks of October and November 2026;
+  - timeline: May–October 2026 as in chapter 1 of the draft (the archive dates, 2 October–24 November 2026, are those of the outputs and of the upload);
   - title page: "Studente Prova", matricola "0000000000", code "0000", and so on;
   - the interview of the conclusions: objectives reached, what was learned, limits,
     consistent with chapters 1–5 and without new numbers;

@@ -73,13 +73,17 @@ Per la copia di lavoro usa il Times New Roman, come nella bozza.
 
 ## Cronologia del tirocinio (indicativa, per la sezione Cronologia)
 
-- Prima e seconda settimana di ottobre 2026: familiarizzazione con ANSYS Workbench e studio
-  preliminare.
-- Terza e quarta settimana di ottobre 2026: automazione delle simulazioni con Python e
-  MAPDL (script batch).
-- Prima e seconda settimana di novembre 2026: Random Forest sulle campagne di simulazione.
-- Terza e quarta settimana di novembre 2026: reti neurali per travi e telai
-  (`travi.ipynb`).
+Il tirocinio si è svolto tra maggio e ottobre 2026, come dice il capitolo 1:
+
+- Maggio 2026: ANSYS Workbench e ricerca bibliografica sull'intelligenza artificiale
+  applicata alla FEM; tra fine maggio e inizio giugno lo studio degli errori più ricorrenti.
+- Giugno e luglio 2026: studio delle librerie PyAnsys e prime applicazioni su modelli di
+  piastre, con script batch MAPDL.
+- Settembre 2026: Random Forest sulle campagne di simulazione.
+- Settembre e ottobre 2026: reti neurali per travi e telai (`travi.ipynb`).
+
+Le date degli archivi (dal 2 ottobre al 24 novembre 2026) sono quelle delle uscite degli
+esperimenti e del caricamento dei file, non quelle dell'intero tirocinio.
 
 ## Valori del frontespizio (FITTIZI, solo per la prova)
 
