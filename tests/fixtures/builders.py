@@ -444,3 +444,139 @@ def build_bib_draft(folder) -> dict:
                 "not in the bibliography", "no entry", "not listed"]},
         },
     }
+
+
+# --- LaTeX report laid out like the real internship draft (Part 2, Task 1) ----------------
+
+_TEX_PREAMBLE = r"""% !TeX program = xelatex
+\documentclass[12pt,a4paper,oneside]{report}
+\usepackage[italian]{babel}
+\usepackage{fontspec}
+\setmainfont{TeX Gyre Termes}
+\usepackage[a4paper,top=3.3cm,bottom=3.2cm,left=3.9cm,right=3.9cm]{geometry}
+\usepackage{setspace}
+\setstretch{1.35}
+\usepackage{microtype}
+\usepackage{indentfirst}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{0pt}
+\emergencystretch=2em
+\usepackage{amsmath}
+\usepackage{graphicx}
+\graphicspath{{immagini/}}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+\usepackage{titlesec}
+\titleformat{\chapter}[hang]{\normalfont\Large\bfseries}{\thechapter.}{1em}{}
+\titlespacing*{\chapter}{0pt}{0pt}{20pt}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+<header>\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{%
+    \fancyhf{}%
+    \fancyfoot[C]{\thepage}%
+    \renewcommand{\headrulewidth}{0pt}%
+}
+\usepackage[unicode,hidelinks]{hyperref}
+"""
+
+_TEX_BODY = r"""
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\large\bfseries ALMA MATER STUDIORUM -- UNIVERSITÀ DI BOLOGNA\par}
+    \vspace{0.6cm}
+    {\large INGEGNERIA (CAMPUS BOLOGNA)\par}
+    \vspace{0.6cm}
+    {Anno Accademico 2025/2026\par}
+    \vspace{1.8cm}
+    {\Large\bfseries RELAZIONE DI FINE TIROCINIO CURRICULARE\par}
+    \vspace{1.0cm}
+    {svolto dallo studente:\par}
+    {Mario Rossi (matricola n. 0000000)\par}
+    \vspace{1.0cm}
+    {presso: Alfa Sistemi S.r.l.\par}
+    \vfill
+    {Bologna, ottobre 2026\par}
+    \thispagestyle{empty}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+\include{capitoli/01}
+\include{capitoli/02}
+\include{capitoli/03}
+
+\end{document}
+"""
+
+_TEX_FIGURE = r"""
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.6\textwidth]{fig}
+    \caption{Schema della pipeline di integrazione continua adottata durante il tirocinio.}
+    \label{fig:pipeline}
+\end{figure}
+"""
+
+_TEX_EQUATION = r"""
+\[
+    T_{\mathrm{tot}} = T_{\mathrm{build}} + T_{\mathrm{test}} - T_{\mathrm{cache}}
+\]
+"""
+
+_TEX_TABLE = r"""
+\begin{center}
+\begin{tabular}{lrr}
+    Fase & Settimane & Ore \\
+    Analisi & 4 & 160 \\
+    Sviluppo & 12 & 480 \\
+    Verifica & 4 & 160 \\
+\end{tabular}
+\end{center}
+"""
+
+
+def write_tex_report(folder, *, running_header=False) -> Path:
+    """A LaTeX internship report with the real draft's page layout; return its main.tex.
+
+    report 12pt, TeX Gyre Termes, a 13.2 cm text block with stretch 1.35 (about 76
+    characters and 34 lines per page), page number centered in the footer, about 2 cm from
+    the bottom edge (outside the bottom 7% of the page). Title page, table of contents and
+    three chapters in capitoli/01..03.tex: "Introduzione" (2 paragraphs), "Attività svolte"
+    (three sections, about 12 pages, with a captioned figure, an equation and a 4-row
+    tabular) and "Conclusioni" (2 paragraphs). running_header puts the chapter title in the
+    header too, at the body size and outside the top 7% of the page.
+    """
+    folder = Path(folder)
+    (folder / "capitoli").mkdir(parents=True, exist_ok=True)
+    (folder / "immagini").mkdir(exist_ok=True)
+    write_png(folder / "immagini" / "fig.png", 400, 220)
+    header = "\\fancyhead[C]{\\leftmark}\n" if running_header else ""
+    main = folder / "main.tex"
+    main.write_text(_TEX_PREAMBLE.replace("<header>", header) + _TEX_BODY, encoding="utf-8")
+
+    def paragraphs(n, start=0):
+        return "\n\n".join(italian_paragraphs(start + n)[start:])
+
+    (folder / "capitoli" / "01.tex").write_text(
+        "\\chapter{Introduzione}\n\n" + paragraphs(2) + "\n", encoding="utf-8")
+    sections = [("Contesto aziendale", 6, _TEX_FIGURE),
+                ("Sviluppo della pipeline", 4, _TEX_EQUATION),
+                ("Verifica dei risultati", 5, _TEX_TABLE)]
+    parts = ["\\chapter{Attività svolte}\n"]
+    for i, (title, before, insert) in enumerate(sections):
+        parts.append(f"\\section{{{title}}}\n")
+        parts.append(paragraphs(before, 18 * i) + "\n" + insert + "\n"
+                     + paragraphs(18 - before, 18 * i + before) + "\n")
+    (folder / "capitoli" / "02.tex").write_text("\n".join(parts), encoding="utf-8")
+    (folder / "capitoli" / "03.tex").write_text(
+        "\\chapter{Conclusioni}\n\n" + paragraphs(2, 3) + "\n", encoding="utf-8")
+    return main

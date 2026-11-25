@@ -7,17 +7,19 @@ import pytest
 from docx.enum.text import WD_BREAK
 
 from conftest import FIX
-from fixtures.builders import italian_paragraphs, write_docx, write_png
+from fixtures.builders import italian_paragraphs, write_docx, write_png, write_tex_report
 from helpmewrite import cli, render
 from helpmewrite.layout import apply_layout, compute_layout
 from helpmewrite.measure import (
-    Check, PageStats, SectionSpan, check_rules, measure, measure_pdf, section_spans,
+    Check, PageStats, SectionSpan, _merge_overlapping, check_rules, margin_positions, measure,
+    measure_pdf, section_spans, slot_counts,
 )
 from helpmewrite.render import render_pdf
 from helpmewrite.rules import load_rules
 
 UNIBO = FIX / "linee-guida-unibo.yaml"
 needs_soffice = pytest.mark.needs_soffice
+needs_xelatex = pytest.mark.needs_xelatex
 
 
 # --- on rendered documents (LibreOffice) -------------------------------------------------
@@ -47,7 +49,10 @@ def test_bad_layout_is_flagged(tmp_path):
     assert not by["font_family"].ok and not by["font_size"].ok and not by["chars_per_line"].ok
     measured = [p.chars_per_full_line for p in m.pages if p.number != 1 and p.is_full]
     assert measured and statistics.median(measured) > 70   # ~80+ caratteri
-    assert by["chars_per_line"].pages == [p.number for p in m.pages if p.number != 1 and p.is_full]
+    # every page but the title page is evaluated, the last one too
+    assert by["chars_per_line"].pages == [p.number for p in m.pages
+                                          if p.number != 1 and p.chars_per_full_line is not None]
+    assert m.page_count in by["chars_per_line"].pages
 
 
 def _report_with_sections(path, intro_paragraphs, conclusion_paragraphs):
@@ -142,7 +147,8 @@ def test_measure_command_bad_input(tmp_path, capsys):
 # --- rules on measured pages (no rendering) ----------------------------------------------
 
 def page(n, lines=33, chars=65.0, fonts=None, size=12.0, number=True, full=True, text=""):
-    return PageStats(number=n, body_lines=lines, chars_per_full_line=chars,
+    return PageStats(number=n, body_lines=lines, line_slots=lines if full else None,
+                     chars_per_full_line=chars,
                      font_chars=fonts or {"LiberationSerif": 2000}, body_size_pt=size,
                      has_page_number=number, is_full=full, text=text)
 
@@ -177,9 +183,14 @@ def test_check_rules_chars_detail_names_page():
 def test_check_rules_skip_title_page_and_partial_pages():
     pages = good_pages()
     pages[0] = page(1, lines=50, chars=90, number=False, full=True)
-    pages[-1] = page(12, lines=10, chars=90, full=False)
+    pages[-1] = page(12, lines=10, chars=None, full=False)
     by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
     assert by["chars_per_line"].ok and by["lines_per_page"].ok and by["page_numbers"].ok
+    # characters per line are measured on the last page too, when it has enough full lines
+    pages[-1] = page(12, lines=10, chars=90, full=False)
+    by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
+    assert by["lines_per_page"].ok
+    assert not by["chars_per_line"].ok and by["chars_per_line"].pages == [12]
 
 
 def test_check_rules_failures():
@@ -194,6 +205,7 @@ def test_check_rules_failures():
     assert not by["lines_per_page"].ok and by["lines_per_page"].pages == [2, 3]
     assert "page 2: 38 body lines" in by["lines_per_page"].detail
     assert not by["page_numbers"].ok and by["page_numbers"].pages == [2]
+    assert "in the header or footer (the lines above the text or below it)" in by["page_numbers"].detail
 
 
 def test_check_rules_font_family_tolerates_five_percent():
@@ -205,13 +217,17 @@ def test_check_rules_font_family_tolerates_five_percent():
 
 
 def test_check_rules_nothing_to_evaluate_is_not_ok():
-    pages = [page(1, full=False), page(2, full=False), page(3, chars=None)]
+    pages = [page(1, full=False), page(2, chars=None, full=False), page(3, chars=None)]
     by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
     assert not by["chars_per_line"].ok and "could not evaluate" in by["chars_per_line"].detail
     assert "1 (title page)" in by["chars_per_line"].detail
-    assert "2 (not a full page" in by["chars_per_line"].detail
-    assert "3 (no full-width lines)" in by["chars_per_line"].detail
-    assert by["lines_per_page"].ok  # page 3 is full: its body lines count
+    assert "2–3 (fewer than 5 full-width lines of text)" in by["chars_per_line"].detail
+    assert by["lines_per_page"].ok  # page 3 is full: its line slots count
+    assert "2 (not a full page" in by["lines_per_page"].detail
+    assert "a heading or caption counts for the lines it takes" in by["lines_per_page"].detail
+    pages = [page(1, full=False), page(2, full=False), page(3, full=False)]
+    by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
+    assert not by["lines_per_page"].ok and "could not evaluate" in by["lines_per_page"].detail
 
 
 def test_check_rules_detail_names_skipped_pages():
@@ -357,32 +373,97 @@ def test_measure_leaves_existing_pdf_in_workdir(tmp_path):
 
 # --- full pages: line slots (final review, finding 8) ------------------------------------
 
-def _line(top, height=12.0):
+def _line(top, height=12.0, size=12.0, text="testo"):
     from collections import Counter
 
     from helpmewrite.measure import _Line
-    return _Line("testo", top, top + height, 70.0, 520.0, Counter({12.0: 5}), Counter())
+    return _Line(text, top, top + height, 70.0, 520.0, Counter({size: 5}), Counter())
 
 
-def test_missing_slots_figure_at_top_and_heading_inside():
-    from helpmewrite.measure import missing_slots
+def test_overlapping_fragments_are_one_line():  # "−" raised by 2.3 pt + the rest of the formula
+    lines = _merge_overlapping([_line(100.0), _line(102.3)])
+    assert len(lines) == 1 and len(_merge_overlapping([_line(100.0), _line(119.5)])) == 2
+    assert (lines[0].top, lines[0].bottom) == (100.0, 114.3)
 
-    pitch, top = 21.1, 78.3
-    full = [_line(top + i * pitch) for i in range(33)]
-    heading_at_top = [_line(top + (i + 1) * pitch) for i in range(32)]
-    figure_at_top = [_line(top + (i + 7) * pitch) for i in range(26)]
-    heading_inside = ([_line(top + i * pitch) for i in range(15)]
-                      + [_line(top + (i + 17) * pitch) for i in range(13)])
-    assert missing_slots(full, top, pitch, pitch) == 0
-    assert missing_slots(heading_at_top, top, pitch, pitch) == 1
-    assert missing_slots(figure_at_top, top, pitch, pitch) == 7
-    assert missing_slots(heading_inside, top, pitch, pitch) == 2
-    # with paragraph spacing (pitch 14, 10 pt after each paragraph of 4 lines): none missing
+
+def test_slot_counts_heading_inside_is_occupied():
+    pitch, top = 19.5, 96.0
+    bottom = top + 33 * pitch + 12.0
+    body = [_line(top + i * pitch) for i in range(15)] + [_line(top + (i + 18) * pitch) for i in range(16)]
+    empty, occupied = slot_counts(body, [_line(top + 16 * pitch, size=14.4)], top, bottom, pitch, pitch)
+    assert round(empty) == 0 and round(occupied) == 3     # line_slots = 31 + 3 = 34
+
+
+def test_slot_counts_figure_and_early_end_are_empty():
+    pitch, top = 19.5, 96.0
+    bottom = top + 33 * pitch + 12.0
+    figure_at_top = [_line(top + (i + 7) * pitch) for i in range(27)]
+    early_end = [_line(top + i * pitch) for i in range(28)]
+    assert round(slot_counts(figure_at_top, [], top, bottom, pitch, pitch)[0]) == 7
+    assert round(slot_counts(early_end, [], top, bottom, pitch, pitch)[0]) == 6
+    # with paragraph spacing (pitch 14, 10 pt after each paragraph of 4 lines): none empty
     spaced, y = [], top
     for i in range(40):
         spaced.append(_line(y, 11.0))
         y += 14.0 + (10.0 if i % 4 == 3 else 0.0)
-    assert missing_slots(spaced, top, 14.0, 24.0) == 0
+    assert slot_counts(spaced, [], top, spaced[-1].bottom, 14.0, 24.0) == (0.0, 0.0)
+
+
+def test_slot_counts_sum_fractions_before_rounding():
+    # 0.4 above + 0.6 inside + 0.4 below = 1.4 -> 1 (full); 0.6 + 0.6 + 0.6 = 1.8 -> 2
+    pitch, top = 19.5, 96.0
+    bottom = top + 33.8 * pitch + 12.0
+
+    def at(*offsets):  # body lines at these offsets from the top, in pitches
+        return [_line(top + o * pitch) for o in offsets]
+
+    # a step of 1.6 pitches (0.6 inside) and, before the last line, a step of 1.4 pitches:
+    # a paragraph break narrower than paragraph step + half a pitch, not counted
+    a = at(*[0.4 + i for i in range(15)], *[16.0 + i for i in range(17)], 33.4)
+    b = at(*[0.6 + i for i in range(15)], *[16.2 + i for i in range(18)])
+    empty_a, occupied_a = slot_counts(a, [], top, bottom, pitch, pitch)
+    empty_b, occupied_b = slot_counts(b, [], top, bottom, pitch, pitch)
+    assert round(empty_a) == 1 and round(empty_b) == 2 and occupied_a == occupied_b == 0
+    assert abs(empty_a - 1.4) < 1e-6 and abs(empty_b - 1.8) < 1e-6
+
+
+def test_margin_positions_find_footer_not_last_body_line():
+    # 10 pages: 30 body lines from 96.0 at pitch 19.5, footer "N" at 771.7;
+    # page 11: body lines down to 783.0 and no footer
+    pitch = 19.5
+    pages = [[_line(96.0 + i * pitch) for i in range(30)] + [_line(771.7, text=str(n))]
+             for n in range(1, 11)]
+    pages.append([_line(783.0 - i * pitch) for i in reversed(range(35))])
+    headers, footers = margin_positions(pages, 19.5)
+    assert headers == [] and len(footers) == 1 and abs(footers[0] - 771.7) <= 2.0
+
+
+@needs_xelatex
+def test_latex_report_like_real_draft(tmp_path):
+    main = write_tex_report(tmp_path / "rel")
+    m = measure(main, load_rules(UNIBO), tmp_path / "w")
+    checks = {c.rule: c for c in m.checks}
+    assert checks["page_numbers"].ok, checks["page_numbers"].detail
+    assert checks["lines_per_page"].ok and "could not evaluate" not in checks["lines_per_page"].detail, \
+        checks["lines_per_page"].detail
+    full = [p for p in m.pages if p.is_full]
+    assert len(full) >= 4 and all(33 <= p.line_slots <= 35 for p in full), \
+        [(p.number, p.body_lines, p.line_slots) for p in full]
+    cpl = checks["chars_per_line"]
+    assert not cpl.ok and "could not evaluate" not in cpl.detail, cpl.detail  # 13.2 cm: ~76 characters
+    evaluated = [p for p in m.pages if p.number != 1 and p.chars_per_full_line is not None]
+    assert 2 not in [p.number for p in evaluated]                       # table of contents
+    assert all(71 <= p.chars_per_full_line <= 80 for p in evaluated), cpl.detail
+
+
+@needs_xelatex
+def test_running_header_text_is_margin(tmp_path):
+    main = write_tex_report(tmp_path / "rel", running_header=True)
+    m = measure(main, load_rules(UNIBO), tmp_path / "w")
+    checks = {c.rule: c for c in m.checks}
+    assert checks["page_numbers"].ok and checks["lines_per_page"].ok, \
+        (checks["page_numbers"].detail, checks["lines_per_page"].detail)
+    assert all(p.line_slots <= 35 for p in m.pages if p.is_full)
 
 
 def _one_liners(n, start=0):

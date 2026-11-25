@@ -97,9 +97,12 @@ mai fonti che non ha verificato.
 - Un titolo scritto come testo normale (ad esempio in grassetto) invece che con uno stile
   Titolo viene trovato, ma la lunghezza della sua sezione non si può misurare: il
   rapporto suggerisce di applicare lo stile.
-- Righe per pagina e caratteri per riga si misurano solo sulle pagine piene di testo: le
-  pagine con titoli, figure o tabelle, il frontespizio e l'ultima pagina sono escluse, e
-  il rapporto dice quali.
+- Le righe per pagina si misurano sulle pagine piene, dove un titolo o una didascalia
+  contano per le righe che occupano: sono escluse le pagine che finiscono prima o hanno
+  una figura senza didascalia, e l'ultima. I caratteri per riga si misurano su ogni pagina
+  con almeno 5 righe piene di prosa (non le voci dell'indice né le righe di una tabella).
+  Il frontespizio è sempre escluso, e il rapporto dice quali pagine non ha valutato e
+  perché.
 - Il supporto Codex non è ancora verificato su un'installazione reale
   (`tests/scenari/codex.md`).
 - Word non è stato provato direttamente: sono stati verificati il passaggio da
