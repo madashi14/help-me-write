@@ -13,7 +13,9 @@ page numbers and section lengths. Algorithm:
    fixed header and footer bands (top and bottom 7% of the page);
 3. margin positions: on each page the last line is a footer candidate when it is alone on
    the page or more than MARGIN_GAP_PITCHES below the line before it; the first line is a
-   header candidate in the same way. A position (top within MARGIN_TOLERANCE_PT) shared by
+   header candidate in the same way. A line larger than the body size is never a candidate:
+   running headers and footers are not, chapter titles at the top of a page are (ruling
+   R9-1). A position (top within MARGIN_TOLERANCE_PT) shared by
    candidates on at least MARGIN_SHARE of the pages with text is a margin position: a page
    number about 2 cm from the edge (LaTeX) is outside the 7% bands;
 4. margin lines: the lines in the 7% bands, plus the first or last line of a page within
@@ -26,9 +28,11 @@ page numbers and section lengths. Algorithm:
    caption, a footnote) is occupied, any other is empty (a figure without a caption, a
    text that ends early). A page is full when round(empty) <= MISSING_SLOTS and it is not
    the last page; its line slots are its body lines plus round(occupied). The typical top
-   and bottom are the medians of the pages' first body-line tops and last body-line
-   bottoms, without the first and the last page. The paragraph step is the pitch, or the
-   usual wider step between paragraphs when the document has paragraph spacing;
+   is the median of the pages' first body-line tops, the typical bottom the upper quartile
+   of their last body-line bottoms (pages that end early, often half of a short document
+   with a chapter per page, do not pull it up), without the first and the last page. The
+   paragraph step is the pitch, or the usual wider step between paragraphs when the
+   document has paragraph spacing;
 6. full prose lines: a body line 90-110% as wide as the reference width, unless two
    consecutive words are more than PROSE_GAP_SIZES times the body size apart (a table of
    contents entry with the page number on the right, a table row) or it has leader dots
@@ -254,18 +258,40 @@ def _positions(candidates, pages_with_text) -> list[float]:
     return positions
 
 
-def margin_positions(pages: list[list[_Line]], pitch: float) -> tuple[list[float], list[float]]:
-    """Tops of the header and footer lines that recur on the pages (see 3. above)."""
+def margin_positions(pages: list[list[_Line]], pitch: float,
+                     body_size_pt: float | None = None) -> tuple[list[float], list[float]]:
+    """Tops of the header and footer lines that recur on the pages (see 3. above).
+
+    With body_size_pt, a first or last line larger than the body size (a chapter title at
+    the top of a page) is not a candidate; None considers every size.
+    """
+    def not_larger(line):
+        return body_size_pt is None or line.size <= body_size_pt + BODY_SIZE_TOLERANCE_PT
+
     headers, footers = [], []
     for lines in pages:
         if not lines:
             continue
-        if len(lines) == 1 or lines[1].top - lines[0].top > MARGIN_GAP_PITCHES * pitch:
+        if (len(lines) == 1 or lines[1].top - lines[0].top > MARGIN_GAP_PITCHES * pitch) \
+                and not_larger(lines[0]):
             headers.append(lines[0].top)
-        if len(lines) == 1 or lines[-1].top - lines[-2].top > MARGIN_GAP_PITCHES * pitch:
+        if (len(lines) == 1 or lines[-1].top - lines[-2].top > MARGIN_GAP_PITCHES * pitch) \
+                and not_larger(lines[-1]):
             footers.append(lines[-1].top)
     with_text = sum(1 for lines in pages if lines)
     return _positions(headers, with_text), _positions(footers, with_text)
+
+
+def typical_bounds(pages: list[list[_Line]]) -> tuple[float, float]:
+    """(typical top, typical bottom) of the text on pages of body lines (see 5. above):
+    median of the first tops, upper quartile of the last bottoms; (0, 0) without pages."""
+    pages = [lines for lines in pages if lines]
+    if not pages:
+        return 0.0, 0.0
+    bottoms = [lines[-1].bottom for lines in pages]
+    bottom = (statistics.quantiles(bottoms, n=4, method="inclusive")[-1] if len(bottoms) > 1
+              else bottoms[0])
+    return statistics.median(lines[0].top for lines in pages), bottom
 
 
 def slot_counts(body, others, typical_top: float, typical_bottom: float, pitch: float,
@@ -333,7 +359,7 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
     pitch = _typical_pitch([[line for line in lines
                              if body_sized(line) and not _in_band(line, height)]
                             for height, lines in raw])
-    headers, footers = margin_positions([lines for _, lines in raw], pitch)
+    headers, footers = margin_positions([lines for _, lines in raw], pitch, body_size_pt)
 
     def is_margin(line, lines, height):
         def near(positions):
@@ -357,8 +383,7 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
     # typical page: neither the title page nor the last page, which is short by design
     typical = ([lines for lines in body[1:-1] if lines] or [lines for lines in body[1:] if lines]
                or [lines for lines in body if lines])
-    typical_bottom = statistics.median(lines[-1].bottom for lines in typical) if typical else 0.0
-    typical_top = statistics.median(lines[0].top for lines in typical) if typical else 0.0
+    typical_top, typical_bottom = typical_bounds(typical)
     paragraph_step = _paragraph_step(body, pitch)
 
     pages = []

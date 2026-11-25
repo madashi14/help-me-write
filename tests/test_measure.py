@@ -438,6 +438,34 @@ def test_margin_positions_find_footer_not_last_body_line():
     assert headers == [] and len(footers) == 1 and abs(footers[0] - 771.7) <= 2.0
 
 
+def test_margin_positions_skip_chapter_titles_larger_than_body():
+    # 10 pages with a 12 pt footer "N" at 792.8; on 5 of them the first line is a 16 pt
+    # chapter title at 75.2, with the text starting 36 pt lower (more than 1.5 pitches)
+    pitch = 21.1
+    pages = []
+    for n in range(1, 11):
+        title = n % 2 == 1
+        start = 111.4 if title else 75.2
+        lines = [_line(75.2, height=16.0, size=16.0, text="Capitolo")] if title else []
+        lines += [_line(start + i * pitch) for i in range(25)]
+        pages.append(lines + [_line(792.8, text=str(n))])
+    headers, footers = margin_positions(pages, pitch, body_size_pt=12.0)
+    assert headers == [] and len(footers) == 1 and abs(footers[0] - 792.8) <= 2.0
+    assert margin_positions(pages, pitch)[0] == [75.2]  # without the body size: as before
+
+
+def test_typical_bottom_is_not_pulled_up_by_pages_that_end_early():
+    from helpmewrite.measure import typical_bounds
+
+    # 12 inner pages: 6 end at the bottom (762.4), 6 end early (chapter ends, contents)
+    pitch = 21.1
+    full = [[_line(75.2 + i * pitch) for i in range(33)] for _ in range(6)]
+    short = [[_line(75.2 + i * pitch) for i in range(n)] for n in (3, 8, 12, 17, 22, 28)]
+    top, bottom = typical_bounds(full + short)
+    assert top == 75.2 and abs(bottom - (75.2 + 32 * pitch + 12.0)) < 1e-6
+    assert typical_bounds([]) == (0.0, 0.0)
+
+
 def _spread_line(words, last_gap=4.0, top=100.0):
     """A body line of words 5 pt per character wide, 4 pt apart (last_gap before the last)."""
     from helpmewrite.measure import _make_line

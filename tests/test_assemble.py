@@ -361,3 +361,6 @@ def test_assemble_with_facsimile_title_page(tmp_path):
         entry = next(line for line in toc.splitlines() if line.startswith(title))
         assert re.sub(r"[.\s]+", " ", entry).strip() == f"{title} {printed}", toc
     assert "00" not in toc
+    # a page opening with a chapter title is a full page (the title is not a running header)
+    assert m.pages[spans["Introduzione"].start_page - 1].is_full
+    assert sum(p.is_full for p in m.pages) >= 4
