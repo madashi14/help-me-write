@@ -11,7 +11,7 @@ from fixtures.builders import write_docx
 from helpmewrite import cli, doctor
 
 HMW = ROOT / "scripts" / "hmw.py"
-PACKAGES = ("docx", "lxml", "pdfplumber", "yaml", "bibtexparser")
+PACKAGES = ("docx", "lxml", "pdfplumber", "yaml", "bibtexparser", "matplotlib")
 
 
 # --- Python version ----------------------------------------------------------------------
@@ -42,7 +42,7 @@ def test_doctor_runs_without_any_package(monkeypatch, capsys):
     env = json.loads(capsys.readouterr().out)
     assert env["packages"] == {name: None for name in PACKAGES}
     hints = [m["how_to_install"] for m in env["missing"] if "package" in m["what"]]
-    assert len(hints) == 5
+    assert len(hints) == len(PACKAGES)
     requirements = str(ROOT / "requirements.txt")
     assert all(f'"{sys.executable}" -m pip install -r "{requirements}"' in h for h in hints)
     assert all("externally-managed-environment" in h for h in hints)
@@ -87,7 +87,7 @@ def test_install_hint_lists_the_packages_without_requirements(monkeypatch, tmp_p
     monkeypatch.setattr(cli, "REQUIREMENTS", tmp_path / "missing.txt")
     hint = cli.install_hint()
     assert " -m pip install " in hint
-    for name in ('"python-docx>=1.2"', "lxml", "pdfplumber", "PyYAML", '"bibtexparser>=1.4,<2"'):
+    for name in ('"python-docx>=1.2"', "lxml", "pdfplumber", "PyYAML", '"bibtexparser>=1.4,<2"', '"matplotlib>=3.7"'):
         assert name in hint
 
 
@@ -128,7 +128,8 @@ def test_unexpected_exception_exits_2_without_traceback(monkeypatch, capsys):
 def test_parser_builds_every_command():
     parser = cli._build_parser()
     for name in cli._COMMANDS:
-        args = {"bib": ["x.docx"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
+        args = {"bib": ["x.docx"], "chart": ["s.json", "-o", "g.png"],
+                "diagram": ["d.json", "-o", "d.png"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
                 "format": ["x.docx", "--layout", "l.json", "-o", "y.docx"],
                 "layout": ["--rules", "r.yaml", "--font", "Times"],
                 "material": ["w"], "notebook": ["n.ipynb", "-o", "n.md"],

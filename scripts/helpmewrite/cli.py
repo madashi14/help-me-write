@@ -18,14 +18,17 @@ HMW_SCRIPT = PLUGIN_ROOT / "scripts" / "hmw.py"
 REQUIREMENTS = PLUGIN_ROOT / "requirements.txt"
 # import name -> name on PyPI
 PACKAGES = {"docx": "python-docx", "lxml": "lxml", "pdfplumber": "pdfplumber",
-            "yaml": "PyYAML", "bibtexparser": "bibtexparser"}
+            "yaml": "PyYAML", "bibtexparser": "bibtexparser",
+            "matplotlib": "matplotlib"}
 
 # name -> (module, add_arguments, handler, json_output, packages needed)
 # json_output=False: -o belongs to the command (the document it produces), not to JSON.
 _COMMANDS = {
     "bib": ("bib", "add_bib_arguments", "run_bib", True,
             ("lxml", "docx", "pdfplumber", "bibtexparser")),
+    "chart": ("figure", "add_chart_arguments", "run_chart", False, ("matplotlib",)),
     "detect": ("detect", "add_arguments", "run", True, ("lxml", "docx")),
+    "diagram": ("figure", "add_diagram_arguments", "run_diagram", False, ("matplotlib",)),
     "doctor": ("doctor", "add_arguments", "run", True, ()),
     "extract": ("extract", "add_arguments", "run", True, ("lxml", "docx", "pdfplumber")),
     "format": ("layout", "add_format_arguments", "run_format", False, ("lxml", "docx")),
@@ -53,7 +56,8 @@ def install_hint() -> str:
         return f'"{sys.executable}" -m pip install -r "{REQUIREMENTS}"'
     return f'"{sys.executable}" -m pip install ' + " ".join(
         f'"{name}"' if any(c in name for c in "<>=") else name
-        for name in ("python-docx>=1.2", "lxml", "pdfplumber", "PyYAML", "bibtexparser>=1.4,<2"))
+        for name in ("python-docx>=1.2", "lxml", "pdfplumber", "PyYAML", "bibtexparser>=1.4,<2",
+                     "matplotlib>=3.7"))
 
 
 def doctor_command() -> str:

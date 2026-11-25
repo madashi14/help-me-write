@@ -3,7 +3,7 @@
 ## Prima di cominciare
 
 1. Installa il plugin e le dipendenze Python come nel `README.md`:
-   `python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2"`
+   `python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2" "matplotlib>=3.7"`
    (con l'errore `externally-managed-environment`, in un ambiente virtuale creato con
    `python -m venv`).
 2. Controlla l'ambiente: chiedi all'assistente "Esegui il controllo dell'ambiente di

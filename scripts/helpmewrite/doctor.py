@@ -40,7 +40,8 @@ def check_environment() -> dict:
         if ver is None:
             missing.append({
                 "what": f"Python package '{cli.PACKAGES[name]}' (import name '{name}')",
-                "needed_for": "Word/PDF/LaTeX/bibliography processing",
+                "needed_for": ("charts and diagrams" if name == "matplotlib"
+                               else "Word/PDF/LaTeX/bibliography processing"),
                 "how_to_install": cli.install_hint() + " (in a virtual environment if pip "
                                   "reports \"externally-managed-environment\")",
             })

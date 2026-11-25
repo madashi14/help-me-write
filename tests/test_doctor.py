@@ -8,7 +8,7 @@ from helpmewrite.doctor import check_environment
 def test_doctor_reports_python_and_packages():
     env = check_environment()
     assert env["python_ok"] is True
-    assert set(env["packages"]) == {"docx", "lxml", "pdfplumber", "yaml", "bibtexparser"}
+    assert set(env["packages"]) == {"docx", "lxml", "pdfplumber", "yaml", "bibtexparser", "matplotlib"}
 
 
 def test_doctor_lists_missing_tool_with_install_hint(monkeypatch):
@@ -21,3 +21,20 @@ def test_doctor_lists_missing_tool_with_install_hint(monkeypatch):
 def test_cli_doctor_json(capsys):
     assert main(["doctor", "--json"]) == 0
     assert "python_ok" in json.loads(capsys.readouterr().out)
+
+
+def test_doctor_reports_matplotlib(monkeypatch):
+    import importlib
+
+    real = importlib.import_module
+
+    def fake(name, *a, **k):
+        if name == "matplotlib":
+            raise ImportError("no")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(importlib, "import_module", fake)
+    env = check_environment()
+    assert env["packages"]["matplotlib"] is None
+    item = next(m for m in env["missing"] if "matplotlib" in m["what"])
+    assert "pip install" in item["how_to_install"]

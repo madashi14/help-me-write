@@ -10,7 +10,7 @@ propone le correzioni come revisioni tracciate, senza mai modificare l'originale
 - Dipendenze Python, da installare con lo stesso Python che userà l'assistente:
 
   ```
-  python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2"
+  python -m pip install "python-docx>=1.2" lxml pdfplumber PyYAML "bibtexparser>=1.4,<2" "matplotlib>=3.7"
   ```
 
   - Se pip risponde `externally-managed-environment` (PEP 668: Python di sistema su

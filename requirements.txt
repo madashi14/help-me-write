@@ -3,3 +3,4 @@ lxml
 pdfplumber
 PyYAML
 bibtexparser>=1.4,<2
+matplotlib>=3.7
