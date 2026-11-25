@@ -49,6 +49,7 @@ class BibReport:
     uncited_entries: list[str] = field(default_factory=list)
     missing_entries: list[str] = field(default_factory=list)
     local_sources: dict[str, str] = field(default_factory=dict)
+    excluded_sources: list[str] = field(default_factory=list)  # the document's own PDFs
 
 
 # ---------------------------------------------------------------- text helpers
@@ -212,8 +213,12 @@ _NARRATIVE = re.compile(
 _PAREN = re.compile(r"\(([^()]*?(?:19|20)\d{2}[a-z]?[^()]*?)\)")
 _AY_PART = re.compile(r"^(?P<name>[^\d]*?)[,\s]*(?P<year>(?:19|20)\d{2}[a-z]?)\b")
 _LEAD = re.compile(r"^(?:cfr\.?|vedi|see|e\.g\.|es\.|i\.e\.|cf\.?)\s+", re.I)
+# \cite and natbib/biblatex variants; with a final "s" (\cites, \parencites, …) the
+# biblatex multicite form: (pre)(post) then several [pre][post]{keys} groups
 _TEX_CITE = re.compile(
-    r"\\(?:cite|citep|citet|parencite|textcite|autocite)\*?(?:\[[^\]]*\]){0,2}\{([^}]*)\}")
+    r"\\(?:[Cc]ite(?:t|p|alp|alt|author|year|yearpar|title|url|date|num)?"
+    r"|[Pp]arencite|[Tt]extcite|[Aa]utocite|[Ff]ootcite|[Ff]ootcitetext|[Ss]martcite"
+    r"|[Ss]upercite)(?P<multi>s?)\*?(?![A-Za-z])")
 
 
 def expand_numeric(body: str) -> list[int]:
@@ -262,17 +267,64 @@ def _scan_author_year(text: str) -> list[tuple[int, str]]:
     return sorted(found, key=lambda x: x[0])
 
 
+def _skip_group(text: str, i: int, opening: str, closing: str) -> int:
+    """Index after the group opening at text[i] (nested groups allowed); -1 if unclosed."""
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] == opening:
+            depth += 1
+        elif text[j] == closing:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+    return -1
+
+
+def _cite_keys(text: str, i: int, multi: bool) -> list[str]:
+    """Keys of the citation command whose arguments start at text[i]."""
+    def blank(k):
+        while k < len(text) and text[k].isspace():
+            k += 1
+        return k
+
+    keys = []
+    i = blank(i)
+    for _ in range(2 if multi else 0):  # multicite (pre)(post)
+        if i < len(text) and text[i] == "(":
+            i = _skip_group(text, i, "(", ")")
+            if i < 0:
+                return keys
+            i = blank(i)
+    while True:
+        for _ in range(2):  # [pre][post]
+            if i < len(text) and text[i] == "[":
+                i = _skip_group(text, i, "[", "]")
+                if i < 0:
+                    return keys
+                i = blank(i)
+        if i >= len(text) or text[i] != "{":
+            return keys
+        end = _skip_group(text, i, "{", "}")
+        if end < 0:
+            return keys
+        keys += [k.strip() for k in text[i + 1:end - 1].split(",") if k.strip()]
+        i = blank(end)
+        if not multi or i >= len(text) or text[i] not in "[{":
+            return keys
+
+
 def _scan_latex(text: str) -> list[tuple[int, str]]:
     text = re.sub(r"(?<!\\)%.*", "", text)
-    return [(m.start(), k.strip()) for m in _TEX_CITE.finditer(text)
-            for k in m.group(1).split(",") if k.strip()]
+    return [(m.start(), key) for m in _TEX_CITE.finditer(text)
+            for key in _cite_keys(text, m.end(), bool(m.group("multi")))]
 
 
 # ------------------------------------------------------------ main extraction
 
 _BIB_HEADING = re.compile(
-    r"^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:bibliografia|riferimenti( bibliografici)?|references|"
-    r"bibliography)\s*:?\s*$", re.IGNORECASE)
+    r"^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:bibliografia(?: e (?:sitografia|webgrafia|riferimenti))?"
+    r"|riferimenti(?: bibliografici)?|fonti(?: bibliografiche)?|references|bibliography)"
+    r"\s*:?\s*$", re.IGNORECASE)
 
 
 def _bib_files(paragraphs: list[dict], main: Path, explicit: Path | None) -> list[Path]:
@@ -401,15 +453,55 @@ def pdf_pages_text(pdf: Path, max_pages: int | None = None) -> list[str]:
         return [page.extract_text() or "" for page in pages]
 
 
+def pdf_page_range_text(pdf: Path, first: int = 1, last: int | None = None):
+    """(page count, [(page number, text)]) for pages first..last (1-based, inclusive; last
+    None or beyond the end: to the last page). BibError if first is beyond the end."""
+    import pdfplumber
+
+    with pdfplumber.open(str(pdf)) as doc:
+        count = len(doc.pages)
+        if first > count:
+            raise BibError(f"{Path(pdf).name} has {count} page(s): no page {first}")
+        last = count if last is None else min(last, count)
+        return count, [(n, doc.pages[n - 1].extract_text() or "")
+                       for n in range(first, last + 1)]
+
+
+_DIFF_PDF = re.compile(r"-differenze(?:-\d+)?$", re.IGNORECASE)
+_COPY_SUFFIX = re.compile(r"^(?:-revisionato|-formattato)", re.IGNORECASE)
+
+
+def _own_pdf(pdf: Path, folder: Path, document: Path | None) -> bool:
+    """True for a PDF of the reviewed document itself, never a source of its own claims: the
+    document, a PDF named like it (also `-revisionato`, `-formattato` copies), a
+    `*-differenze.pdf`, or anything in a `*-revisionato*` folder."""
+    parts = pdf.relative_to(folder).parts
+    if any("-revisionato" in part.lower() for part in parts[:-1]):
+        return True
+    if _DIFF_PDF.search(pdf.stem):
+        return True
+    if document is None:
+        return False
+    stem, own = pdf.stem.casefold(), Path(document).stem.casefold()
+    return stem == own or (stem.startswith(own) and bool(_COPY_SUFFIX.match(stem[len(own):])))
+
+
 def find_local_sources(folder: Path, entries: list[BibEntry],
-                       skipped: list[str] | None = None) -> dict[str, str]:
+                       skipped: list[str] | None = None, document: Path | None = None,
+                       excluded: list[str] | None = None) -> dict[str, str]:
     """Map entry key -> PDF path found under folder (recursive). Broken or oversized PDFs
-    are skipped (their paths are appended to `skipped` if given)."""
+    are skipped (their paths are appended to `skipped` if given). `.help-me-write/` and
+    the document's own PDFs (see _own_pdf; appended to `excluded` if given) are never
+    sources."""
     folder = Path(folder)
     found: dict[str, str] = {}
     candidates = [e for e in entries if e.doi or (e.title and _words(e.title))]
     for pdf in sorted(folder.rglob("*.pdf")):
         if ".help-me-write" in pdf.relative_to(folder).parts:
+            continue
+        if _own_pdf(pdf, folder, document):
+            if excluded is not None:
+                excluded.append(str(pdf))
             continue
         try:
             if pdf.stat().st_size > MAX_PDF_BYTES:
@@ -462,20 +554,36 @@ def run_bib(args) -> int:
               f"({type(exc).__name__}: {exc})", file=sys.stderr)
         return 2
     if args.sources:
-        report.local_sources = find_local_sources(Path(args.sources), report.entries)
+        report.local_sources = find_local_sources(Path(args.sources), report.entries,
+                                                  document=path,
+                                                  excluded=report.excluded_sources)
     data = asdict(report)
     lines = [f"style: {report.style}",
              f"entries: {len(report.entries)}, citations: {len(report.citations)}",
              f"missing entries (cited, not in bibliography): {', '.join(report.missing_entries) or '-'}",
              f"uncited entries: {', '.join(report.uncited_entries) or '-'}"]
     lines += [f"local source {k}: {v}" for k, v in report.local_sources.items()]
+    lines += [f"not a source (the document's own PDF): {p}" for p in report.excluded_sources]
     cli.emit(data, args, text="\n".join(lines))
     return 0
 
 
 def add_pdftext_arguments(parser):
-    parser.add_argument("pdf", help="PDF to read; output: {\"pages\": [{\"page\": 1, \"text\": ...}]}"
-                                    " with 1-based page numbers")
+    parser.add_argument("pdf", help="PDF to read; output: {\"page_count\": N, \"pages\": "
+                                    "[{\"page\": 1, \"text\": ...}]} with 1-based page numbers")
+    parser.add_argument("--pages", help="only these pages, 1-based and inclusive: 3, 3-5 or 3-")
+
+
+def page_range(spec: str) -> tuple[int, int | None]:
+    """'3' -> (3, 3); '3-5' -> (3, 5); '3-' -> (3, None). ValueError if invalid."""
+    m = re.fullmatch(r"\s*(\d+)\s*(?:([-–])\s*(\d*)\s*)?", spec or "")
+    if not m:
+        raise ValueError(f"invalid --pages {spec!r}: use N, A-B or A- (pages start at 1)")
+    first = int(m.group(1))
+    last = first if not m.group(2) else (int(m.group(3)) if m.group(3) else None)
+    if first < 1 or (last is not None and last < first):
+        raise ValueError(f"invalid --pages {spec!r}: use N, A-B or A- (pages start at 1)")
+    return first, last
 
 
 def run_pdftext(args) -> int:
@@ -486,11 +594,19 @@ def run_pdftext(args) -> int:
     if cli.refuses_overwrite(path, args):
         return 2
     try:
-        pages = pdf_pages_text(path)
+        first, last = page_range(args.pages) if args.pages else (1, None)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    try:
+        count, pages = pdf_page_range_text(path, first, last)
+    except BibError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"error: cannot read {path.name} as a PDF ({type(exc).__name__}: {exc})",
               file=sys.stderr)
         return 2
-    data = {"pages": [{"page": i, "text": t} for i, t in enumerate(pages, start=1)]}
-    cli.emit(data, args, text="\n\n".join(f"--- page {i} ---\n{t}" for i, t in enumerate(pages, 1)))
+    data = {"page_count": count, "pages": [{"page": n, "text": t} for n, t in pages]}
+    cli.emit(data, args, text="\n\n".join(f"--- page {n} of {count} ---\n{t}" for n, t in pages))
     return 0

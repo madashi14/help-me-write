@@ -59,7 +59,8 @@ added that nobody read, and no citation is called verified that was not.
    On exit 2 show the error and stop.
 4. **Reviewer.** Take `./prompt-revisore-bibliografia.md` and fill its placeholders:
    absolute paths of `<rev>/extract.json`, `<rev>/bib.json`, the guidelines (or `none`),
-   the profile, `<bibfile>` (or `none`), `<sources>`, and the two outputs
+   the profile, `<bibfile>` (or `none`), `<sources>`, the folder `<rev>/fonti` for the
+   texts of the sources (`{SOURCE_TEXTS}`), and the two outputs
    `<rev>/edits-bibliografia.json` and `<rev>/note-bibliografia.md`; `{HMW}` = `python`
    (or `python3`) followed by the quoted absolute path of `hmw.py`; the document's
    language and the user's language. Dispatch a fresh subagent with the filled prompt as

@@ -115,13 +115,23 @@ def test_revisore_bibliografia_prompt_contract():
     text = (folder / "prompt-revisore-bibliografia.md").read_text(encoding="utf-8")
     placeholders = set(re.findall(r"\{([A-Z_]+)\}", text))
     assert placeholders == {"EXTRACT", "BIB", "PROFILE", "GUIDELINES", "BIBFILE", "SOURCES",
-                            "HMW", "EDITS_OUT", "NOTES_OUT", "DOCUMENT_LANGUAGE",
-                            "USER_LANGUAGE"}
+                            "SOURCE_TEXTS", "HMW", "EDITS_OUT", "NOTES_OUT",
+                            "DOCUMENT_LANGUAGE", "USER_LANGUAGE"}
     for needed in ["## Citations", "## Missing citations", "## Bibliography consistency",
                    '"by": "bibliografia"', "## Citation needs", "pdftext",
                    "title, authors, year and DOI", "not verifiable", "possible invented or wrong",
                    "page", "author's own work"]:
         assert needed in text, needed
+    # pdftext output goes to a file, never judged when cut off (final review, finding 6)
+    flat = " ".join(text.split())
+    for needed in ['pdftext "<file>.pdf" -o "{SOURCE_TEXTS}/', "--pages A-B",
+                   "Never judge a citation from text that was cut off",
+                   "Never print a whole PDF in the shell"]:
+        assert needed in flat, needed
+    # the document's own PDFs are never sources (finding 7)
+    for needed in ["`*-differenze.pdf`", "`*-revisionato*` folder", "excluded_sources",
+                   "named like the document"]:
+        assert needed in flat, needed
     # a reference-data replace only from a value read on the source itself (ruling R15)
     rule = re.search(r"^   - A correction of reference data.*?(?=^   - )", text, re.S | re.M)
     assert rule, "the reference-data correction rule"

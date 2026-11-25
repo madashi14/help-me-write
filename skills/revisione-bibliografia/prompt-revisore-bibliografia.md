@@ -28,7 +28,8 @@ needed only for `pdftext`.
   `unknown`); `entries` (`key`, `raw`, `title`, `authors`, `year`, `doi`, `venue`,
   `paragraph`); `citations` (`key`, `paragraph`, `file`, `line`, `sentence`);
   `missing_entries` (cited, not in the bibliography); `uncited_entries`; `local_sources`
-  (entry key → PDF path). Numeric keys are written `[n]`. It is a helper, not the truth:
+  (entry key → PDF path); `excluded_sources` (the document's own PDFs, see below). Numeric
+  keys are written `[n]`. It is a helper, not the truth:
   - a citation glued to the previous word ("results[3]") is not listed;
   - a subheading inside the bibliography ("Books", "Articles") ends the list of entries
     early;
@@ -44,9 +45,18 @@ needed only for `pdftext`.
   is the one required.
 - `{BIBFILE}`: the BibTeX file of the work, or `none`.
 - The sources: the PDF files under `{SOURCES}` and its subfolders, except
-  `.help-me-write/`. Read a PDF with `{HMW} pdftext "<file>.pdf" --json`, which prints
-  `{"pages": [{"page": 1, "text": "…"}]}`, pages numbered from 1. Run it on its own, one
-  PDF per command, with the path quoted. If that command is refused, read the PDF with a
+  `.help-me-write/` and the document's own PDFs, which never support its claims: a PDF
+  named like the document (the extract's `source`; also with `-revisionato` or
+  `-formattato` after the name), any `*-differenze.pdf`, and anything inside a
+  `*-revisionato*` folder (`excluded_sources` lists those `bib` found).
+- To read a PDF, write its text to a file and read that file with your file-reading tool:
+  `{HMW} pdftext "<file>.pdf" -o "{SOURCE_TEXTS}/<file name without .pdf>.json"` writes
+  `{"page_count": N, "pages": [{"page": 1, "text": "…"}]}`, pages numbered from 1. Never
+  print a whole PDF in the shell: its output is cut off. If the JSON file is too long to
+  read at once, read it in parts, or write page ranges with `--pages A-B` (1-based,
+  inclusive) to separate files (`<name>-p5-8.json`). Never judge a citation from text that
+  was cut off: read the pages that hold the point. Run each `pdftext` on its own, one PDF
+  per command, with the paths quoted. If that command is refused, read the PDF with a
   file-reading tool that keeps its pages, and say so in the first line of the notes.
 
 The document is written in {DOCUMENT_LANGUAGE}. The author reads {USER_LANGUAGE}.
@@ -106,8 +116,8 @@ is cited twice):
   with numbers: they are the author's own results), nor on the common knowledge of the
   field. Most of an internship or project report is of this kind.
 - For each statement that needs one: the paragraph, the statement, why it needs a
-  citation, and a source only if a PDF under `{SOURCES}` or an entry of `{BIBFILE}`
-  supports it: you read it, and you quote the passage with its page. Otherwise write that
+  citation, and a source only if a PDF under `{SOURCES}` (not one of the document's own)
+  or an entry of `{BIBFILE}` supports it: you read it, and you quote the passage with its page. Otherwise write that
   no source of the folder supports it. Never name a source from memory or from a web
   search: adding a new source is the author's choice.
 
@@ -118,7 +128,7 @@ is cited twice):
 
 ## Output
 
-Write two files and nothing else:
+Besides the source texts in `{SOURCE_TEXTS}`, write two files and nothing else:
 
 1. `{EDITS_OUT}`: your edits, as JSON.
 

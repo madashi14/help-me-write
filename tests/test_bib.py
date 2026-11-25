@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -187,3 +188,103 @@ def test_code_and_url_brackets_are_not_citations(tmp_path):
         ("Heading 1", "Bibliografia"), "[3] Rossi, M. (2021). T. V."])
     r = extract_bibliography(doc)
     assert [c.key for c in r.citations] == ["[3]"] and r.missing_entries == []
+
+
+# --- final review: pdftext pages, the document's own PDFs, headings and LaTeX commands -----
+
+def test_page_range():
+    from helpmewrite.bib import page_range
+
+    assert page_range("3") == (3, 3) and page_range("2-5") == (2, 5)
+    assert page_range("2–5") == (2, 5) and page_range(" 4- ") == (4, None)
+    for bad in ["0", "5-3", "x", "1,2", "", "-3"]:
+        with pytest.raises(ValueError):
+            page_range(bad)
+
+
+@needs_soffice
+def test_pdftext_pages_option(tmp_path, capsys):
+    from fixtures.builders import write_pdf_pages
+
+    pdf = write_pdf_pages(tmp_path / "fonte.pdf", [["Pagina uno."], ["Pagina due."],
+                                                   ["Pagina tre."]])
+    assert cli.main(["pdftext", str(pdf), "--pages", "2-3", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["page_count"] == 3 and [p["page"] for p in data["pages"]] == [2, 3]
+    assert "due" in data["pages"][0]["text"] and "tre" in data["pages"][1]["text"]
+    out = tmp_path / "rev" / "fonti" / "fonte.json"  # the folder does not exist yet
+    assert cli.main(["pdftext", str(pdf), "--pages", "2-9", "-o", str(out)]) == 0
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert [p["page"] for p in data["pages"]] == [2, 3]
+    assert cli.main(["pdftext", str(pdf), "--pages", "3"]) == 0
+    text = capsys.readouterr().out
+    assert "--- page 3 of 3 ---" in text and "uno" not in text
+    assert cli.main(["pdftext", str(pdf), "--pages", "4"]) == 2
+    assert cli.main(["pdftext", str(pdf), "--pages", "3-2"]) == 2
+    err = capsys.readouterr().err
+    assert "has 3 page(s)" in err and "invalid --pages" in err and "Traceback" not in err
+
+
+def _sources_folder(tmp_path, monkeypatch):
+    """A work folder whose every PDF has the entry's title on its first page."""
+    from helpmewrite import bib
+
+    work = tmp_path / "Relazione"
+    for name in ["bozza.pdf", "Bozza-revisionato.pdf", "bozza-revisionato-formattato.pdf",
+                 "Relazione-differenze.pdf", "Relazione-differenze-2.pdf",
+                 "bozza-revisionato/main.pdf", "Relazione-revisionato-2/x.pdf",
+                 ".help-me-write/revisioni/r/pdf-1/bozza.pdf", "fonti/rossi2021.pdf",
+                 "fonti/bozza di rossi.pdf"]:
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
+        (work / name).write_bytes(b"%PDF-1.4 stub")
+    monkeypatch.setattr(bib, "pdf_pages_text",
+                        lambda pdf, max_pages=None: ["Tempi di build nelle pipeline"])
+    return work
+
+
+def test_the_documents_own_pdfs_are_never_sources(tmp_path, monkeypatch):
+    work = _sources_folder(tmp_path, monkeypatch)
+    entries = [BibEntry("[1]", "r", "Tempi di build nelle pipeline", [], "2021", None, None, 3)]
+    excluded = []
+    found = find_local_sources(work, entries, document=work / "bozza.docx", excluded=excluded)
+    # a source whose name merely starts with the document's name is still a source
+    assert found == {"[1]": str(work / "fonti" / "bozza di rossi.pdf")}
+    names = sorted(Path(p).relative_to(work).as_posix() for p in excluded)
+    assert names == ["Bozza-revisionato.pdf", "Relazione-differenze-2.pdf",
+                     "Relazione-differenze.pdf", "Relazione-revisionato-2/x.pdf",
+                     "bozza-revisionato-formattato.pdf", "bozza-revisionato/main.pdf",
+                     "bozza.pdf"]
+
+
+def test_bib_command_lists_excluded_pdfs(tmp_path, monkeypatch, capsys):
+    work = _sources_folder(tmp_path, monkeypatch)
+    doc = write_docx(work / "bozza.docx", NUMERIC)
+    assert cli.main(["bib", str(doc), "--sources", str(work), "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert not data["local_sources"]["[1]"].endswith(("bozza.pdf", "main.pdf"))
+    assert "fonti" in data["local_sources"]["[1]"]
+    assert any(p.endswith("bozza.pdf") and ".help-me-write" not in p
+               for p in data["excluded_sources"])
+    assert not any(".help-me-write" in p for p in data["excluded_sources"])
+
+
+@pytest.mark.parametrize("heading", ["Bibliografia e sitografia", "Fonti", "Riferimenti",
+                                     "Bibliografia e riferimenti", "5. Fonti bibliografiche"])
+def test_more_bibliography_headings(tmp_path, heading):
+    doc = write_docx(tmp_path / "d.docx", [NUMERIC[0], NUMERIC[1], ("Heading 1", heading)]
+                     + NUMERIC[3:])
+    r = extract_bibliography(doc)
+    assert [e.key for e in r.entries] == ["[1]", "[2]", "[3]"], heading
+
+
+def test_more_latex_citation_commands(tmp_path):
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n"
+        "Come in \\footcite{a1} e \\citeauthor{a2} (\\citeyear{a3}).\n"
+        "Vedi \\cites[p.~3]{a4}[][5]{a5,a6} e \\citealp{a7} \\citealt[cfr.][]{a8}.\n"
+        "Anche \\citeauthor*{a9}, \\textcites(x)(y){b1}{b2}, \\Textcite{b3}. % \\cite{zz}\n"
+        "\\end{document}\n", encoding="utf-8")
+    r = extract_bibliography(tmp_path / "main.tex")
+    assert [c.key for c in r.citations] == ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8",
+                                             "a9", "b1", "b2", "b3"]
+    assert [c.line for c in r.citations if c.key in ("a4", "b3")] == [4, 5]
