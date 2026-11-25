@@ -121,9 +121,9 @@ for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` 
    | `materiale` | [analisi-materiale](../analisi-materiale/SKILL.md) |
    | `linee-guida` | [linee-guida](../linee-guida/SKILL.md) with this `<work>`; then `hmw state set "<work>" document_type=<type> profile=<profile>` with the values of its `linee-guida.yaml` |
    | `formato` | step 4; then `hmw state set "<work>" format=<latex or word>` |
-   | `struttura`, `frontespizio` | skill struttura (outline, title page) |
-   | `intervista` | skill intervista-capitolo, for `next.chapter` |
-   | `scrittura`, `approvazione` | skill scrittura-capitolo, for `next.chapter` |
+   | `struttura`, `frontespizio` | [struttura](../struttura/SKILL.md) with this `<work>`: outline and title page; for `bozza-parziale` also the comparison with the guidelines, the working copy and the fit into the page limit |
+   | `intervista` | [intervista-capitolo](../intervista-capitolo/SKILL.md) with this `<work>`, for `next.chapter` |
+   | `scrittura`, `approvazione` | [scrittura-capitolo](../scrittura-capitolo/SKILL.md) with this `<work>`, for `next.chapter`; it uses [figure](../figure/SKILL.md) for charts, diagrams and images |
    | `revisione` | [revisione](../revisione/SKILL.md) with this `<work>` on the working copy's main `.tex` or the output `.docx` (see Handing off), then measure the result: `hmw measure "<document>" --rules "<work>/.help-me-write/linee-guida.yaml"` |
    | `fine` | summary for the user with the paths of the document and of the review report |
 

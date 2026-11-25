@@ -12,7 +12,7 @@ PROFILES = sorted((ROOT / "profili").glob("*.md"))
 
 PROFILE_HEADINGS = [
     "## Recognize", "## Typical structure", "## Default guidelines", "## Interview prompts",
-    "## Tone", "## Content checklist", "## Citation needs",
+    "## Tone", "## Content checklist", "## Citation needs", "## Writing budget",
 ]
 SKILL_DIR_PLACEHOLDER = "<this skill's directory>/"
 
@@ -49,7 +49,8 @@ def relative_paths(body: str) -> list[str]:
 
 def test_expected_skills_and_profiles_exist():
     for name in ["linee-guida", "revisione", "revisione-bibliografia", "help-me-write",
-                 "analisi-materiale"]:
+                 "analisi-materiale", "struttura", "intervista-capitolo", "scrittura-capitolo",
+                 "figure"]:
         assert (ROOT / "skills" / name / "SKILL.md") in SKILLS
     assert {p.stem for p in PROFILES} >= {"relazione-tirocinio", "generico"}
 
@@ -310,3 +311,41 @@ def test_material_skill_and_template():
     headings = [line[3:] for line in block.splitlines() if line.startswith("## ")]
     assert headings == ["Sintesi del lavoro", "Mappa del materiale", "Cronologia",
                         "Dati e numeri", "Note dell'autore", "Non letto", "Lacune e domande"]
+
+
+# --- structure, interview, writing and figures (Part 2, Task 12) ------------------------
+
+def _flat_body(name):
+    _, body = _split(ROOT / "skills" / name / "SKILL.md")
+    return " ".join(body.split())
+
+
+def test_writing_skills_rules():
+    writing = _flat_body("scrittura-capitolo")
+    for needed in ["[DA VERIFICARE", "Fonti del capitolo", "## Writing budget",
+                   "](formato-capitoli.md)", "](../figure/SKILL.md)", "state modified",
+                   "--status approvato", "--status scritto"]:
+        assert needed in writing, needed
+    # the list of prose to avoid
+    for needed in ["## Prose to avoid", "riveste un ruolo fondamentale", "nel panorama attuale",
+                   "in conclusione possiamo affermare", "triplets", "intensifiers",
+                   "any internship"]:
+        assert needed in writing, needed
+    structure = _flat_body("struttura")
+    for needed in ["never reduce", "texdiff", "state outline", "title_page_approved=true",
+                   "manifest.yaml", "titlepage", "latex-init", "circa", "-capitoli-nuovi.docx"]:
+        assert needed in structure, needed
+    interview = _flat_body("intervista-capitolo")
+    for needed in ["at most 8 questions", "-intervista.md", "--status intervista-fatta",
+                   "--notes"]:
+        assert needed in interview, needed
+    figures = _flat_body("figure")
+    for needed in [".fonte.json", "hmw chart", "hmw diagram", "\\ref", "@fig:"]:
+        assert needed in figures, needed
+
+
+def test_entry_skill_links_the_writing_skills():
+    """Ruling R11-2: the phase table links the skills it sends each phase to."""
+    _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
+    for name in ["struttura", "intervista-capitolo", "scrittura-capitolo"]:
+        assert f"](../{name}/SKILL.md)" in body, name

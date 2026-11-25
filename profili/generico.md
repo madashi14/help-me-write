@@ -5,7 +5,7 @@ reports, theses, project reports, legal acts. It assumes nothing: every rule com
 the guidelines (call, regulation, template, author instructions) or from the user.
 
 This file is also the template for a new profile: copy it to
-`profili/<document-type>.md`, keep the seven `##` headings exactly as they are (skills
+`profili/<document-type>.md`, keep the eight `##` headings exactly as they are (skills
 read the sections by these names) and write the `## Default guidelines` YAML block in the
 schema of `skills/linee-guida/schema-linee-guida.md`, with `document_type` equal to the
 file name without `.md`.
@@ -71,3 +71,11 @@ defined at first use; no filler or generic prose.
   the art, methods and tools of others, non-obvious claims.
 - No citation: the author's own work and common knowledge of the field.
 - Use the citation style the guidelines require, the same throughout.
+
+## Writing budget
+
+No fixed shares. A length the guidelines give for a part (`sections[].pages` in
+`linee-guida.yaml`) is that part's budget. The rest of the maximum of `pages` is shared
+among the other parts in proportion to the material that supports each (`materiale.md`);
+opening and closing parts (abstract, introduction, conclusion) stay short. Propose the
+shares with the outline and ask the user to confirm them.
