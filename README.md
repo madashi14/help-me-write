@@ -102,6 +102,6 @@ figure. Non è ancora disponibile.
 
 `python <cartella del plugin>/scripts/hmw.py <comando>`: `doctor`, `extract`, `rules`,
 `layout`, `format`, `measure`, `track`, `texdiff`, `bib`, `pdftext`. Con `--json` l'output
-è JSON. Exit code: 0 ok; 1 controlli non superati (`measure`) o correzioni non applicate
-(`track`); 2 errore d'uso o file non valido (anche: file di uscita già esistente, che non
+è JSON. Exit code: 0 ok; 1 controlli non superati (`measure`), correzioni non applicate
+(`track`) o sostituzioni non trovate (`titlepage`); 2 errore d'uso o file non valido (anche: file di uscita già esistente, che non
 viene mai sovrascritto); 3 strumento esterno o pacchetto Python mancante.

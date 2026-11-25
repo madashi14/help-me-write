@@ -473,16 +473,21 @@ _COPY_SUFFIX = re.compile(r"^(?:-revisionato|-formattato)", re.IGNORECASE)
 
 def _own_pdf(pdf: Path, folder: Path, document: Path | None) -> bool:
     """True for a PDF of the reviewed document itself, never a source of its own claims: the
-    document, a PDF named like it (also `-revisionato`, `-formattato` copies), a
-    `*-differenze.pdf`, or anything in a `*-revisionato*` folder."""
+    document, a PDF named like it (also `-revisionato`, `-formattato` copies), its
+    `<name>-differenze.pdf`, or anything in a `-revisionato` folder named after the document
+    or its project folder. Without a known document, any `*-differenze.pdf` and any
+    `*-revisionato*` folder count."""
     parts = pdf.relative_to(folder).parts
-    if any("-revisionato" in part.lower() for part in parts[:-1]):
-        return True
-    if _DIFF_PDF.search(pdf.stem):
-        return True
+    revisioned = [part.casefold() for part in parts[:-1] if "-revisionato" in part.lower()]
     if document is None:
-        return False
+        return bool(revisioned) or bool(_DIFF_PDF.search(pdf.stem))
     stem, own = pdf.stem.casefold(), Path(document).stem.casefold()
+    names = {own, folder.name.casefold()} - {""}
+    if any(part.startswith(n) for part in revisioned for n in names):
+        return True
+    diff = _DIFF_PDF.search(stem)
+    if diff and stem[:diff.start()] == own:
+        return True
     return stem == own or (stem.startswith(own) and bool(_COPY_SUFFIX.match(stem[len(own):])))
 
 
@@ -496,7 +501,7 @@ def find_local_sources(folder: Path, entries: list[BibEntry],
     folder = Path(folder)
     found: dict[str, str] = {}
     candidates = [e for e in entries if e.doi or (e.title and _words(e.title))]
-    for pdf in sorted(folder.rglob("*.pdf")):
+    for pdf in sorted(p for p in folder.rglob("*") if p.suffix.lower() == ".pdf"):
         if ".help-me-write" in pdf.relative_to(folder).parts:
             continue
         if _own_pdf(pdf, folder, document):

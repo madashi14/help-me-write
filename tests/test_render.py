@@ -241,3 +241,43 @@ def test_fontspec_document_compiles_with_xelatex(tmp_path):
                                 "\\begin{document}\nCittà e perché.\n\\end{document}\n")
     assert render.tex_engine(main) == ["-xelatex"]
     assert render_pdf(main, tmp_path / "w").read_bytes().startswith(b"%PDF")
+
+
+@needs_soffice
+def test_render_accepts_changes_without_settings_part(tmp_path):
+    import zipfile
+
+    import pdfplumber
+
+    src = write_docx(tmp_path / "t.docx", ["Testo di base."])
+    body = ('<w:p><w:r><w:t>Inizio </w:t></w:r>'
+            '<w:del w:id="901" w:author="A" w:date="2026-01-01T00:00:00Z"><w:r>'
+            '<w:delText>TESTOCANCELLATO</w:delText></w:r></w:del>'
+            '<w:ins w:id="902" w:author="A" w:date="2026-01-01T00:00:00Z"><w:r>'
+            '<w:t>TESTOINSERITO</w:t></w:r></w:ins></w:p>')
+    out = tmp_path / "nosettings.docx"
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item)
+            if item.filename == "word/settings.xml":
+                continue
+            if item.filename == "[Content_Types].xml":
+                data = data.replace(
+                    b"</Types>",
+                    b'<Override PartName="/word/settings.xml" ContentType="x"/></Types>')
+                import re
+                data = re.sub(rb'<Override PartName="/word/settings.xml"[^>]*/>', b"", data)
+            if item.filename == "word/_rels/document.xml.rels":
+                import re
+                data = re.sub(rb"<Relationship [^>]*relationships/settings[^>]*/>", b"", data)
+            if item.filename == "word/document.xml":
+                text = data.decode("utf-8")
+                text = text.replace("<w:body>", "<w:body>" + body, 1)
+                data = text.encode("utf-8")
+            zout.writestr(item, data)
+    with zipfile.ZipFile(out) as z:
+        assert "word/settings.xml" not in z.namelist()
+    pdf = render_pdf(out, tmp_path / "work")
+    with pdfplumber.open(pdf) as doc:
+        text = "\n".join(p.extract_text() or "" for p in doc.pages)
+    assert "TESTOINSERITO" in text and "TESTOCANCELLATO" not in text

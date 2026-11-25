@@ -46,14 +46,14 @@ class CliError(Exception):
 def install_hint() -> str:
     """The command that installs every Python package the plugin needs."""
     if REQUIREMENTS.is_file():
-        return f'python -m pip install -r "{REQUIREMENTS}"'
-    return "python -m pip install " + " ".join(
+        return f'"{sys.executable}" -m pip install -r "{REQUIREMENTS}"'
+    return f'"{sys.executable}" -m pip install ' + " ".join(
         f'"{name}"' if any(c in name for c in "<>=") else name
         for name in ("python-docx>=1.2", "lxml", "pdfplumber", "PyYAML", "bibtexparser>=1.4,<2"))
 
 
 def doctor_command() -> str:
-    return f'python "{HMW_SCRIPT}" doctor'
+    return f'"{sys.executable}" "{HMW_SCRIPT}" doctor'
 
 
 def missing_packages_message(names) -> str:

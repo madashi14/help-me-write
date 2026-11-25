@@ -231,7 +231,7 @@ def _sources_folder(tmp_path, monkeypatch):
 
     work = tmp_path / "Relazione"
     for name in ["bozza.pdf", "Bozza-revisionato.pdf", "bozza-revisionato-formattato.pdf",
-                 "Relazione-differenze.pdf", "Relazione-differenze-2.pdf",
+                 "bozza-differenze.pdf", "bozza-differenze-2.pdf",
                  "bozza-revisionato/main.pdf", "Relazione-revisionato-2/x.pdf",
                  ".help-me-write/revisioni/r/pdf-1/bozza.pdf", "fonti/rossi2021.pdf",
                  "fonti/bozza di rossi.pdf"]:
@@ -250,10 +250,39 @@ def test_the_documents_own_pdfs_are_never_sources(tmp_path, monkeypatch):
     # a source whose name merely starts with the document's name is still a source
     assert found == {"[1]": str(work / "fonti" / "bozza di rossi.pdf")}
     names = sorted(Path(p).relative_to(work).as_posix() for p in excluded)
-    assert names == ["Bozza-revisionato.pdf", "Relazione-differenze-2.pdf",
-                     "Relazione-differenze.pdf", "Relazione-revisionato-2/x.pdf",
+    assert names == ["Bozza-revisionato.pdf", "Relazione-revisionato-2/x.pdf",
+                     "bozza-differenze-2.pdf", "bozza-differenze.pdf",
                      "bozza-revisionato-formattato.pdf", "bozza-revisionato/main.pdf",
                      "bozza.pdf"]
+
+
+def test_unrelated_differenze_pdf_is_a_source(tmp_path, monkeypatch):
+    work = _sources_folder(tmp_path, monkeypatch)
+    (work / "Confronto-differenze.pdf").write_bytes(b"%PDF-1.4 stub")
+    (work / "fonti" / "rossi2021.pdf").unlink()
+    (work / "fonti" / "bozza di rossi.pdf").unlink()
+    entries = [BibEntry("[1]", "r", "Tempi di build nelle pipeline", [], "2021", None, None, 3)]
+    excluded = []
+    found = find_local_sources(work, entries, document=work / "bozza.docx", excluded=excluded)
+    assert found == {"[1]": str(work / "Confronto-differenze.pdf")}
+    assert str(work / "bozza-differenze.pdf") in excluded
+
+
+def test_find_local_sources_uppercase_suffix(tmp_path, monkeypatch):
+    from helpmewrite import bib
+
+    work = tmp_path / "w"
+    (work / "fonti").mkdir(parents=True)
+    (work / "fonti" / "Articolo.PDF").write_bytes(b"%PDF-1.4 stub")
+    (work / "fonti" / "Altro.Pdf").write_bytes(b"%PDF-1.4 stub")
+    monkeypatch.setattr(bib, "pdf_pages_text",
+                        lambda pdf, max_pages=None: ["Tempi di build nelle pipeline"])
+    entries = [BibEntry("[1]", "r", "Tempi di build nelle pipeline", [], "2021", None, None, 3)]
+    found = find_local_sources(work, entries)
+    assert found == {"[1]": str(work / "fonti" / "Altro.Pdf")}
+    entries = [BibEntry("[2]", "r", "Tempi di build nelle pipeline", [], "2021", None, None, 3)]
+    (work / "fonti" / "Altro.Pdf").unlink()
+    assert find_local_sources(work, entries) == {"[2]": str(work / "fonti" / "Articolo.PDF")}
 
 
 def test_bib_command_lists_excluded_pdfs(tmp_path, monkeypatch, capsys):

@@ -44,7 +44,7 @@ def test_doctor_runs_without_any_package(monkeypatch, capsys):
     hints = [m["how_to_install"] for m in env["missing"] if "package" in m["what"]]
     assert len(hints) == 5
     requirements = str(ROOT / "requirements.txt")
-    assert all(f'python -m pip install -r "{requirements}"' in h for h in hints)
+    assert all(f'"{sys.executable}" -m pip install -r "{requirements}"' in h for h in hints)
     assert all("externally-managed-environment" in h for h in hints)
 
 
@@ -55,7 +55,7 @@ def test_command_with_a_missing_package_exits_3_with_the_install_command(
     assert cli.main(["extract", str(src)]) == 3
     err = capsys.readouterr().err
     assert "missing Python package(s): lxml" in err
-    assert f'python "{HMW}" doctor' in err
+    assert f'"{sys.executable}" "{HMW}" doctor' in err
     assert str(ROOT / "requirements.txt") in err and "Traceback" not in err
 
 
@@ -86,9 +86,16 @@ def test_hmw_without_site_packages_doctor_and_extract():
 def test_install_hint_lists_the_packages_without_requirements(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "REQUIREMENTS", tmp_path / "missing.txt")
     hint = cli.install_hint()
-    assert hint.startswith("python -m pip install ")
+    assert " -m pip install " in hint
     for name in ('"python-docx>=1.2"', "lxml", "pdfplumber", "PyYAML", '"bibtexparser>=1.4,<2"'):
         assert name in hint
+
+
+def test_install_hint_uses_running_python():
+    import sys
+
+    assert f'"{sys.executable}" -m pip install' in cli.install_hint()
+    assert f'"{sys.executable}"' in cli.doctor_command()
 
 
 # --- output and unexpected errors ---------------------------------------------------------

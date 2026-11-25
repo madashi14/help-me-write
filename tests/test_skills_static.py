@@ -271,3 +271,9 @@ def test_review_folder_has_seconds_and_latex_outputs_beside_the_project(skill_md
     assert "`<parent>/<name>-revisionato`" in body
     flat = " ".join(body.split())
     assert "output that already exists (use the next free name the message gives)" in flat
+
+
+def test_bib_prompt_unique_source_names():
+    text = (ROOT / "skills" / "revisione-bibliografia"
+            / "prompt-revisore-bibliografia.md").read_text(encoding="utf-8")
+    assert "replaced by __" in text
