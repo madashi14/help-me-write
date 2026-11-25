@@ -181,9 +181,35 @@ def test_material_git_history(tmp_path):
     assert inv["dates"]["reliable"] is True
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git missing")
+def test_material_nested_git_repository(tmp_path):
+    repo = tmp_path / "progetto"
+    _w(repo / "a.py", "1")
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+    def git(*args, date=None):
+        e = dict(env)
+        if date:
+            e["GIT_AUTHOR_DATE"] = e["GIT_COMMITTER_DATE"] = date
+        subprocess.run(["git", "-C", str(repo), *args], check=True, env=e, capture_output=True)
+    git("init", "-q")
+    git("add", ".")
+    git("commit", "-qm", "one", date="2026-10-01T12:00:00")
+    _w(repo / "a.py", "2")
+    git("commit", "-qam", "two", date="2026-11-20T12:00:00")
+    inv = inventory(tmp_path)
+    assert inv["git"] is None
+    assert inv["git_repos"] == [{"path": "progetto", "commits": 2, "first": "2026-10-01",
+                                 "last": "2026-11-20"}]
+    assert inv["dates"]["reliable"] is True
+    assert not any(f["path"].startswith("progetto/.git/") for f in inv["files"])
+
+
 def test_material_no_git_is_null(tmp_path):
     _w(tmp_path / "a.py")
     assert inventory(tmp_path)["git"] is None
+    assert inventory(tmp_path)["git_repos"] == []
 
 
 def test_material_truncates_large_folder(tmp_path, monkeypatch):

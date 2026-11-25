@@ -83,11 +83,10 @@ def test_case1_word_pipeline(tmp_path):
     assert found.get("drafts", []) == [], found
     hmw("state", "init", work, "--mode", "da-zero", "--format", "word")
     # 2. material: git history with three commits and reliable dates
-    # (material looks for .git only at the root it is given: the repository is in progetto/)
-    hmw("material", work, "--json")
-    inv = hmw("material", ex["project"], "--json")
-    assert inv["git"]["commits"] == 3
-    assert (inv["git"]["first"], inv["git"]["last"]) == ("2026-09-15", "2026-11-05")
+    inv = hmw("material", work, "--json")
+    assert inv["git"] is None  # the repository is nested in progetto/
+    assert inv["git_repos"] == [{"path": "progetto", "commits": 3, "first": "2026-09-15",
+                                 "last": "2026-11-05"}]
     assert inv["dates"]["reliable"] is True
     # 3. the figure from the CSV and the title page from the facsimile
     state_dir = work / ".help-me-write"

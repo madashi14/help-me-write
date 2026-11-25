@@ -58,6 +58,9 @@ def _day(ts: float) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
 
 
+MAX_REPOS = 20
+
+
 def _skip(name: str) -> bool:
     return detect._skip_dir(name) or name in EXTRA_SKIP_DIRS
 
@@ -202,7 +205,10 @@ def inventory(work: Path, extract_dir: Path | None = None) -> dict:
     skip_extract = extract_dir.resolve() if extract_dir is not None else None
     files, archives, skipped_dirs, counts = [], [], [], {}
     truncated = False
+    repo_dirs = []
     for root, dirs, names in os.walk(work):
+        if (Path(root) / ".git").exists():  # a directory, or a file for worktrees/submodules
+            repo_dirs.append(Path(root))
         keep = []
         for d in sorted(dirs):
             full = Path(root) / d
@@ -230,11 +236,20 @@ def inventory(work: Path, extract_dir: Path | None = None) -> dict:
             elif kind_of(name) == "archive":
                 archives.append({"path": rel, "opened": False})
     git = _git_history(work)
+    git_repos, more_repos = [], max(0, len(repo_dirs) - MAX_REPOS)
+    for repo in repo_dirs[:MAX_REPOS]:
+        history = _git_history(repo)
+        if history:
+            git_repos.append({"path": repo.relative_to(work).as_posix(), **history})
     days = sorted(f["modified"] for f in files)
     arc_days = sorted(d for a in archives for d in (a.get("first"), a.get("last")) if d)
     span = (date.fromisoformat(days[-1]) - date.fromisoformat(days[0])).days if days else 0
-    reliable = bool(days) and not (span <= 1 and (git is None or git["commits"] <= 1))
+    many_commits = any(r["commits"] > 1 for r in git_repos) or (git and git["commits"] > 1)
+    reliable = bool(days) and not (span <= 1 and not many_commits)
     return {"root": str(work), "files": files, "archives": archives, "git": git,
+            "git_repos": git_repos,
+            **({"git_repos_note": f"{more_repos} more repositories not listed (limit {MAX_REPOS})"}
+               if more_repos else {}),
             "dates": {"files": {"first": days[0] if days else None,
                                 "last": days[-1] if days else None},
                       "archives": {"first": arc_days[0] if arc_days else None,
@@ -357,6 +372,11 @@ def run_material(args) -> int:
     g = inv["git"]
     lines.append(f"git: {g['commits']} commits, {g['first']} to {g['last']}" if g
                  else "git: none")
+    for r in inv["git_repos"]:
+        lines.append(f"git repository {r['path']}: {r['commits']} commits, "
+                     f"{r['first']} to {r['last']}")
+    if inv.get("git_repos_note"):
+        lines.append(inv["git_repos_note"])
     d = inv["dates"]
     lines.append(f"dates: files {d['files']['first']} to {d['files']['last']}, "
                  f"reliable: {str(d['reliable']).lower()}. {d['note']}")

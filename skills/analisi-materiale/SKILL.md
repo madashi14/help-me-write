@@ -27,7 +27,8 @@ the raw material. Nothing is executed and nothing is invented.
 
 1. **Inventory.** Run
    `hmw material "<work>" --extract "<work>/.help-me-write/materiale/estratti" -o "<work>/.help-me-write/materiale/inventario.json"`
-   and read the JSON: files with type and size, git history, dates, extracted archive
+   and read the JSON: files with type and size, git history (`git` for the work folder itself, `git_repos` for
+   every nested repository, e.g. the host's project in a subfolder), dates, extracted archive
    members, what was skipped and why. It overwrites its own JSON; the user's files are not
    touched. If it exits 3, run `hmw doctor` and show the install hint.
 2. **Author's notes first.** Read README, LEGGIMI, NOTE, diaries and similar files before
@@ -43,7 +44,7 @@ the raw material. Nothing is executed and nothing is invented.
    - Documents and PDFs already extracted by step 1: read the extracts.
    - Large folders: a sample for each subfolder (its README, the entry points, two or
      three files) and say exactly what was not read, in "Non letto".
-4. **Chronology.** Build it from git dates, archive dates, diaries and file names. If
+4. **Chronology.** Build it from git dates (`git` and every entry of `git_repos`), archive dates, diaries and file names. If
    `dates.reliable` in the inventory is false, or gaps remain, ask the user one grouped
    question about the timeline (periods, order, milestones). Their answers have source
    "utente".
