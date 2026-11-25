@@ -131,6 +131,7 @@ def test_parser_builds_every_command():
         args = {"bib": ["x.docx"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
                 "format": ["x.docx", "--layout", "l.json", "-o", "y.docx"],
                 "layout": ["--rules", "r.yaml", "--font", "Times"],
+                "material": ["w"], "notebook": ["n.ipynb", "-o", "n.md"],
                 "measure": ["x.docx", "--rules", "r.yaml"], "pdftext": ["x.pdf"],
                 "rules": ["validate", "r.yaml"], "texdiff": ["a.tex", "b.tex", "-o", "d.pdf"],
                 "track": ["x.docx", "--edits", "e.json", "-o", "y.docx"]}[name]
