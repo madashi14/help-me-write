@@ -11,8 +11,8 @@ from fixtures.builders import italian_paragraphs, write_docx, write_png, write_t
 from helpmewrite import cli, render
 from helpmewrite.layout import apply_layout, compute_layout
 from helpmewrite.measure import (
-    Check, PageStats, SectionSpan, _merge_overlapping, check_rules, margin_positions, measure,
-    measure_pdf, section_spans, slot_counts,
+    Check, PageStats, SectionSpan, _chars_per_full_line, _merge_overlapping, check_rules,
+    margin_positions, measure, measure_pdf, section_spans, slot_counts,
 )
 from helpmewrite.render import render_pdf
 from helpmewrite.rules import load_rules
@@ -221,7 +221,8 @@ def test_check_rules_nothing_to_evaluate_is_not_ok():
     by = {c.rule: c for c in check_rules(pages, [], unibo_without_sections())}
     assert not by["chars_per_line"].ok and "could not evaluate" in by["chars_per_line"].detail
     assert "1 (title page)" in by["chars_per_line"].detail
-    assert "2–3 (fewer than 5 full-width lines of text)" in by["chars_per_line"].detail
+    assert ("2–3 (fewer than 5 full-width lines of prose (a table of contents, a table or a "
+            "list))") in by["chars_per_line"].detail
     assert by["lines_per_page"].ok  # page 3 is full: its line slots count
     assert "2 (not a full page" in by["lines_per_page"].detail
     assert "a heading or caption counts for the lines it takes" in by["lines_per_page"].detail
@@ -438,6 +439,36 @@ def test_margin_positions_find_footer_not_last_body_line():
     assert headers == [] and len(footers) == 1 and abs(footers[0] - 771.7) <= 2.0
 
 
+def _spread_line(words, last_gap=4.0, top=100.0):
+    """A body line of words 5 pt per character wide, 4 pt apart (last_gap before the last)."""
+    from helpmewrite.measure import _make_line
+    placed, x = [], 70.0
+    for i, text in enumerate(words):
+        if i:
+            x += last_gap if i == len(words) - 1 else 4.0
+        placed.append({"text": text, "x0": x, "x1": x + 5.0 * len(text), "top": top,
+                       "bottom": top + 12.0, "size": 12.0, "fontname": "TeXGyreTermes"})
+        x += 5.0 * len(text)
+    return _make_line(placed)
+
+
+def test_mostly_non_prose_page_has_no_chars_per_line():
+    prose = [_spread_line(["parola"] * 11)] * 30                      # 370 pt, 76 characters
+    # table-of-contents entries: the page number 16 pt away (under the prose rule's 24 pt),
+    # with no leader dots (they look like prose) or with 3 of them
+    toc_plain = [_spread_line(["2.3"] + ["sezione"] * 8 + ["7"], last_gap=16.0)] * 6
+    toc_leaders = [_spread_line(["2.1"] + ["sezione"] * 8 + [".", ".", "."] + ["4"])] * 8
+    reference = prose[0].width
+    assert all(0.9 * reference <= line.width <= 1.1 * reference
+               for line in (prose[0], toc_plain[0], toc_leaders[0]))
+    assert _chars_per_full_line(toc_plain + toc_leaders, reference, 12.0) is None  # 6 vs 8
+    assert _chars_per_full_line(prose + toc_leaders[:2], reference, 12.0) == 76.0
+    # as many prose lines as other full lines: evaluated
+    assert _chars_per_full_line(toc_plain + toc_leaders[:6], reference, 12.0) == \
+        float(len(toc_plain[0].text))
+    assert _chars_per_full_line(prose[:4], reference, 12.0) is None    # fewer than 5
+
+
 @needs_xelatex
 def test_latex_report_like_real_draft(tmp_path):
     main = write_tex_report(tmp_path / "rel")
@@ -453,7 +484,7 @@ def test_latex_report_like_real_draft(tmp_path):
     assert not cpl.ok and "could not evaluate" not in cpl.detail, cpl.detail  # 13.2 cm: ~76 characters
     evaluated = [p for p in m.pages if p.number != 1 and p.chars_per_full_line is not None]
     assert 2 not in [p.number for p in evaluated]                       # table of contents
-    assert all(71 <= p.chars_per_full_line <= 80 for p in evaluated), cpl.detail
+    assert all(72 <= p.chars_per_full_line <= 84 for p in evaluated), cpl.detail
 
 
 @needs_xelatex

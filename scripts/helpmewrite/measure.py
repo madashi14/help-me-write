@@ -31,8 +31,10 @@ page numbers and section lengths. Algorithm:
    usual wider step between paragraphs when the document has paragraph spacing;
 6. full prose lines: a body line 90-110% as wide as the reference width, unless two
    consecutive words are more than PROSE_GAP_SIZES times the body size apart (a table of
-   contents entry with the page number on the right, a table row) or it has leader dots.
-   chars_per_full_line is their median, or None with fewer than MIN_FULL_LINES of them.
+   contents entry with the page number on the right, a table row) or it has leader dots
+   (three or more). chars_per_full_line is their median, or None with fewer than
+   MIN_FULL_LINES of them or when most of the page's full lines are not prose (a table of
+   contents whose entries end close to their page numbers, without leader dots).
 Lines per page are checked on full pages (their line slots), characters per line on every
 page with chars_per_full_line, never on page 1 (title page); page numbers are checked on
 every page but page 1. The check details name the pages that were skipped and why; a check
@@ -83,7 +85,7 @@ PARAGRAPH_STEP_SHARE = 0.05  # wider steps this frequent are paragraph spacing, 
 _ROMAN = r"(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})(?<=[ivx])"  # i ... xxxix (front matter)
 _PAGE_NUMBER = re.compile(rf"^\W*(?:\d+|{_ROMAN})\W*$|^(pag\.?|pagina|page)\s*(?:\d+|{_ROMAN}\b)",
                           re.IGNORECASE)
-_LEADER_DOTS = re.compile(r"(?:\.\s?){4,}")
+_LEADER_DOTS = re.compile(r"(?:\.\s?){3,}")
 _SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
 
 
@@ -301,6 +303,17 @@ def _is_prose(line: _Line, body_size_pt: float) -> bool:
     return all(b["x0"] - a["x1"] <= gap for a, b in zip(line.words, line.words[1:]))
 
 
+def _chars_per_full_line(body_lines, reference: float, body_size_pt: float) -> float | None:
+    """Median characters of a page's full prose lines (see 6. above); None with fewer than
+    MIN_FULL_LINES of them, or with more full lines that are not prose than lines that are."""
+    full = [line for line in body_lines
+            if FULL_LINE_RATIO * reference <= line.width <= FULL_LINE_MAX_RATIO * reference]
+    prose = [len(line.text) for line in full if _is_prose(line, body_size_pt)]
+    if len(prose) < MIN_FULL_LINES or len(full) - len(prose) > len(prose):
+        return None
+    return float(statistics.median(prose))
+
+
 def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
     import pdfplumber
 
@@ -354,16 +367,12 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
                                       paragraph_step)
         # the text ends on the last page: it is never full
         full = bool(body_lines) and number != len(raw) and round(empty) <= MISSING_SLOTS
-        prose = [len(line.text) for line in body_lines
-                 if FULL_LINE_RATIO * reference <= line.width <= FULL_LINE_MAX_RATIO * reference
-                 and _is_prose(line, body_size_pt)]
         fonts = sum((line.fonts for line in body_lines), Counter())
         pages.append(PageStats(
             number=number,
             body_lines=len(body_lines),
             line_slots=len(body_lines) + round(occupied) if full else None,
-            chars_per_full_line=(float(statistics.median(prose))
-                                 if len(prose) >= MIN_FULL_LINES else None),
+            chars_per_full_line=_chars_per_full_line(body_lines, reference, body_size_pt),
             font_chars=dict(fonts),
             body_size_pt=body_size_pt if body_lines else None,
             has_page_number=any(_PAGE_NUMBER.match(line.text) for line in edge),

@@ -100,7 +100,8 @@ mai fonti che non ha verificato.
 - Le righe per pagina si misurano sulle pagine piene, dove un titolo o una didascalia
   contano per le righe che occupano: sono escluse le pagine che finiscono prima o hanno
   una figura senza didascalia, e l'ultima. I caratteri per riga si misurano su ogni pagina
-  con almeno 5 righe piene di prosa (non le voci dell'indice né le righe di una tabella).
+  con almeno 5 righe piene di prosa, se non sono meno delle altre sue righe piene (voci
+  dell'indice, righe di una tabella).
   Il frontespizio è sempre escluso, e il rapporto dice quali pagine non ha valutato e
   perché.
 - Il supporto Codex non è ancora verificato su un'installazione reale

@@ -90,7 +90,8 @@ def _chars_skip_reason(p, last) -> str | None:
     if not p.body_lines:
         return "no body text"
     if p.chars_per_full_line is None:
-        return f"fewer than {MIN_FULL_LINES} full-width lines of text"
+        return (f"fewer than {MIN_FULL_LINES} full-width lines of prose (a table of contents, "
+                "a table or a list)")
     return None
 
 
