@@ -14,20 +14,27 @@
 
 Every defect needs evidence specific to it in note-bibliografia.md, never a word that any
 note contains:
-- wrong_claim: a row of the table whose first cell names [1], with the verdict not (or
-  partially) supported, the source's words quoted verbatim and the page;
-- invented_entry: what the note says about [3] (its table row, or the text after "[3]" on
-  a line, up to another key) says not found, possibly invented or not verifiable;
+- wrong_claim: in the table row whose first cell names [1], the Verdict cell says not (or
+  partially) supported, and the Source passage cell quotes, word for word from the
+  source PDF's page, a passage with the expected words, and names that page;
+- invented_entry: the text about [3] in "## Bibliography consistency" says not found or
+  possibly invented; "not verifiable" counts only when the notes' first line says that
+  online search was not available;
 - wrong_year: what the note says about [2] has both years (not inside a file name), and
   the entry gets a tracked change from one to the other;
-- missing_citation: an item of "## Missing citations" has the statement's number;
-- missing_entry: a clause of "## Bibliography consistency" names [4] as missing.
-A keyword right after a negation ("non inventata", "nessuna mancante") does not count.
+- missing_citation: an item of "## Missing citations" has the statement's number and does
+  not say that no citation is needed, and a comment is anchored in the statement;
+- missing_entry: a clause of "## Bibliography consistency" names [4] (not as the end of a
+  range "[1]–[4]") as missing.
+No edit and no "## Missing citations" item may fall on the student's own activities.
+A keyword does not count after a negation in its clause ("non inventata", "non risulta
+inventata", "nessuna mancante", "not, as far as I can tell, invented").
 """
 import hashlib
 import json
 import re
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -64,8 +71,9 @@ def setup(folder: Path, expected_path: Path, plugin: Path) -> int:
 
 
 def norm(text: str) -> str:
-    """Casefolded, one space between words, no space before %, plain quotes."""
-    text = text.replace(" ", " ").replace("’", "'").casefold()
+    """Casefolded, one space between words, no space before %, plain apostrophes,
+    ligatures split (NFKC: a PDF's "ﬁ" is "fi")."""
+    text = unicodedata.normalize("NFKC", text).replace("’", "'").casefold()
     text = " ".join(text.split())
     return re.sub(r"\s+%", "%", text)
 
@@ -101,9 +109,24 @@ def about(note: str, key: str) -> list[str]:
     return out
 
 
-# a keyword right after a negation does not count: "non inventata", "nessuna mancante"
-_NEGATED = re.compile(r"(?:\bnon|\bnot|\bno|\bnessun\w*|\bnone|\bnever|\bmai)\s+"
-                      r"(?:(?:è|e|is|was|be|stat[ao]|been)\s+)*$")
+# negations: right before a keyword ("nessuna mancante"), or anywhere earlier in its
+# clause ("la voce non risulta inventata", "it is not, as far as I can tell, invented")
+_NEGATED_RIGHT_BEFORE = re.compile(r"(?:\bnon|\bnot|\bno|\bnessun\w*|\bnone|\bnever|\bmai)\s+"
+                                   r"(?:(?:è|e|is|was|be|stat[ao]|been)\s+)*$")
+_NEGATION = re.compile(r"\b(?:non|not|never|mai|né|nor)\b|n't\b")
+_CLAUSE_END = re.compile(r"[;:!?]|\.\s|\s[—–]\s|\|")
+# keywords that are themselves negative ("non trovata", "not found") are not negated by
+# the clause: "nessun PDF locale, non trovata online" still says not found
+_NEGATIVE_KEYWORD = re.compile(r"(?:non|not|no|nessun\w*|does not|cannot)\b")
+
+
+def negated(low: str, start: int, keyword_text: str) -> bool:
+    if _NEGATED_RIGHT_BEFORE.search(low[max(0, start - 24):start]):
+        return True
+    if _NEGATIVE_KEYWORD.match(keyword_text):
+        return False
+    ends = [m.end() for m in _CLAUSE_END.finditer(low, 0, start)]
+    return _NEGATION.search(low[ends[-1] if ends else 0:start]) is not None
 
 
 def keyword(text: str, keywords):
@@ -111,7 +134,7 @@ def keyword(text: str, keywords):
     low = norm(text)
     for k in keywords:
         for m in re.finditer(re.escape(k), low):
-            if not _NEGATED.search(low[max(0, m.start() - 24):m.start()]):
+            if not negated(low, m.start(), k):
                 return k
     return None
 
@@ -124,12 +147,102 @@ def any_hit(texts, keywords):
     return None, None
 
 
+def names_alone(text: str, key: str) -> bool:
+    """text names key on its own, not as the end of a range such as [1]–[4]."""
+    return any(not re.search(r"\]\s*[–—-]\s*$", text[:m.start()])
+               for m in re.finditer(re.escape(key), text))
+
+
 def clauses_naming(text: str, key: str) -> list[str]:
-    """Clauses (split at ; and at the end of sentences) that name key on its own, not as
-    the end of a range such as [1]–[4]."""
-    alone = re.compile(rf"(?<![–\-])(?<![–\-]\s){re.escape(key)}")
+    """Clauses (split at ; and at the end of sentences) that name key on its own."""
     return [c for line in text.splitlines() for c in re.split(r";|\.\s", line)
-            if alone.search(c)]
+            if names_alone(c, key)]
+
+
+def segments_about(text: str, key: str) -> list[str]:
+    """On each line naming key on its own, the text from key up to the next other key."""
+    out = []
+    for line in text.splitlines():
+        if not names_alone(line, key):
+            continue
+        for m in re.finditer(re.escape(key), line):
+            rest = line[m.end():]
+            other = next((k for k in KEY.finditer(rest) if k.group(0) != key), None)
+            out.append(key + (rest[:other.start()] if other else rest))
+    return out
+
+
+def table_columns(text: str) -> dict:
+    """Column index of the verdict and of the source passage, from the table's header."""
+    for line in text.splitlines():
+        cells = _cells(line)
+        if not cells:
+            continue
+        found = {}
+        for i, cell in enumerate(cells):
+            low = cell.casefold()
+            if re.search(r"verdict|esito", low):
+                found.setdefault("verdict", i)
+            elif re.search(r"passage|passaggio", low):
+                found.setdefault("passage", i)
+        return {"verdict": found.get("verdict", 2), "passage": found.get("passage", 4)}
+    return {"verdict": 2, "passage": 4}
+
+
+_QUOTED = re.compile(r"«([^»]+)»|“([^”]+)”|\"([^\"]+)\"")
+
+
+def verbatim_quotes(cell: str, page_text: str) -> list[str]:
+    """Quotations in cell whose every fragment (split at ellipses) is in page_text."""
+    page = norm(page_text)
+    out = []
+    for m in _QUOTED.finditer(cell):
+        quoted = next(g for g in m.groups() if g is not None)
+        fragments = [norm(f).strip(" .,;:") for f in re.split(r"…|\.\.\.|\[…\]", quoted)]
+        fragments = [f for f in fragments if f]
+        if fragments and all(f in page for f in fragments):
+            out.append(quoted)
+    return out
+
+
+_NO_CITATION_NEEDED = re.compile(
+    r"non serv|non è necessari|non necessari|non richied|non va citat|non occorr|"
+    r"nessuna citazione|not needed|no citation needed|does not need|doesn't need|"
+    r"not required|needs no citation|no need")
+
+
+def windows(text: str, n: int = 4) -> set:
+    words = re.findall(r"[\w%]+", norm(text))
+    return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def mentions_personal(line: str, paragraphs, sentences) -> str | None:
+    """The personal sentence a line quotes (4 words in a row found nowhere else in the
+    document), if any."""
+    rest = " ".join(p["text"] for p in paragraphs)
+    for s in sentences:
+        rest = rest.replace(s, " ")
+    elsewhere = windows(rest)
+    seen = windows(line)
+    for s in sentences:
+        if (windows(s) - elsewhere) & seen:
+            return s
+    return None
+
+
+def overlapping_edits(edits, paragraphs, sentence, comment_only=False):
+    """Edits whose find falls (even partly) in sentence."""
+    spans = personal_spans(paragraphs, [sentence])
+    texts = {p["id"]: p["text"] for p in paragraphs}
+    out = []
+    for e in edits:
+        if comment_only and not e.get("comment"):
+            continue
+        find, para = e.get("find") or "", e.get("paragraph")
+        starts = [m.start() for m in re.finditer(re.escape(find), texts.get(para, ""))] if find else []
+        if any(a < s + len(find) and s < b for s in starts for a, b in spans.get(para, [])):
+            out.append(e)
+    return out
 
 
 def personal_spans(paragraphs, sentences):
@@ -203,6 +316,7 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
         str(review) if review else "none in .help-me-write/revisioni/")
     note = report = ""
     edits = []
+    offline = False
     if review is not None:
         needed = BIB_FILES + (REVISIONE_FILES if combined else [])
         missing = [n for n in needed if not (review / n).is_file()]
@@ -219,6 +333,9 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
         first = next((line for line in note.splitlines() if line.strip()), "")
         add(re.search(r"online|web|rete|internet", first, re.I),
             "note says whether online search was used", first[:120])
+        offline = re.search(r"non disponibil|not available|unavailable|non usat|not used|"
+                            r"nessuno strumento|no web|senza rete|no network|nessuna rete",
+                            first, re.I) is not None
         edits_path = review / "edits-bibliografia.json"
         try:
             data = json.loads(edits_path.read_text(encoding="utf-8"))
@@ -240,18 +357,37 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
 
     # -- the five defects in the notes
     spec = defects["wrong_claim"]
-    rows = rows_of(note, spec["key"])
+    citations = section(note, ["citations"])
+    columns = table_columns(citations)
     page = re.compile(PAGE.format(n=spec["page"]), re.I)
-    good = [r for r in rows if keyword(r, spec["verdicts"])
-            and norm(spec["quote"]) in norm(r) and page.search(r)]
-    add(good, "wrong_claim: [1] not supported, source quoted with page",
-        f"{len(rows)} row(s) for {spec['key']}; need verdict, «{spec['quote']}», "
-        f"page {spec['page']}" if not good else good[0][:160])
+    try:
+        from helpmewrite.bib import pdf_pages_text
+
+        page_text = pdf_pages_text(folder / spec["source"])[spec["page"] - 1]
+    except Exception:  # missing or unreadable source: nothing can be quoted from it
+        page_text = ""
+    good = []
+    for row in rows_of(citations, spec["key"]):
+        cells = _cells(row)
+        verdict = cells[columns["verdict"]] if len(cells) > columns["verdict"] else ""
+        passage = cells[columns["passage"]] if len(cells) > columns["passage"] else ""
+        quotes = [q for q in verbatim_quotes(passage, page_text) if norm(spec["quote"]) in norm(q)]
+        if keyword(verdict, spec["verdicts"]) and quotes and page.search(passage):
+            good.append(f"{verdict} | {passage}")
+    add(good, "wrong_claim: [1] not supported, source quoted verbatim with page",
+        good[0][:160] if good else
+        f"need, in the row of {spec['key']}, a verdict of {spec['verdicts'][:2]} and a "
+        f"passage quoted verbatim from {spec['source']} p. {spec['page']} with "
+        f"«{spec['quote']}» and the page")
 
     spec = defects["invented_entry"]
-    hit, text = any_hit(about(note, spec["key"]), spec["keywords"])
-    add(hit, "invented_entry: [3] not found / invented / not verifiable",
-        f"{hit!r} in {text[:120]!r}" if hit else f"nothing about {spec['key']} says so")
+    consistency = section(note, ["bibliography consistency"])
+    accepted = spec["keywords"] + (spec["offline_keywords"] if offline else [])
+    hit, text = any_hit(segments_about(consistency, spec["key"]), accepted)
+    add(hit, "invented_entry: [3] not found or possibly invented",
+        f"{hit!r} in {text[:120]!r}" if hit else
+        f"no line of ## Bibliography consistency says {spec['key']} was not found"
+        + ("" if offline else " (online search was available: 'not verifiable' is not enough)"))
 
     spec = defects["wrong_year"]
     lines = [t for t in about(note, spec["key"]) if word(t, spec["wrong"]) and word(t, spec["right"])]
@@ -268,12 +404,15 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
     spec = defects["missing_citation"]
     missing_section = section(note, ["missing citations"])
     items = [line for line in missing_section.splitlines()
-             if any(k in norm(line) for k in spec["keywords"])]
-    add(items, "missing_citation: the statement under ## Missing citations",
-        items[0][:160] if items else f"none of {spec['keywords']}")
+             if any(k in norm(line) for k in spec["keywords"])
+             and not _NO_CITATION_NEEDED.search(norm(line))]
+    anchored = overlapping_edits(edits, paragraphs, spec["sentence"], comment_only=True)
+    add(items and anchored, "missing_citation: listed under ## Missing citations and commented",
+        (items[0][:120] if items else f"no item with {spec['keywords']} that asks for a citation")
+        + ("; comment on " + repr(anchored[0]["find"]) if anchored
+           else "; no comment anchored in the statement"))
 
     spec = defects["missing_entry"]
-    consistency = section(note, ["bibliography consistency"])
     lines = [c for c in clauses_naming(consistency, spec["key"]) if keyword(c, spec["keywords"])]
     add(lines, "missing_entry: [4] missing from the bibliography",
         lines[0][:160] if lines else f"no line of ## Bibliography consistency names {spec['key']}"
@@ -283,6 +422,10 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
     bad = edits_in_personal(edits, paragraphs, expected["personal_sentences"])
     add(not bad, "no edit in the personal sentences",
         "; ".join(f"¶ {e.get('paragraph')} {e.get('find')!r}" for e in bad))
+    asked = [line for line in missing_section.splitlines()
+             if mentions_personal(line, paragraphs, expected["personal_sentences"])]
+    add(not asked, "no missing citation on the personal sentences",
+        "; ".join(line[:100] for line in asked))
 
     # -- the revised copy
     revised = folder / expected["revised"]
@@ -302,7 +445,8 @@ def evaluate(folder: Path, expected_path: Path, combined: bool = False) -> list:
     evidence = {
         "wrong_claim": "30%" in norm(bib),
         "invented_entry": defects["invented_entry"]["key"] in bib and any_hit(
-            [bib], defects["invented_entry"]["keywords"])[0] is not None,
+            [bib], defects["invented_entry"]["keywords"]
+            + defects["invented_entry"]["offline_keywords"])[0] is not None,
         "wrong_year": word(bib, defects["wrong_year"]["wrong"]) and word(
             bib, defects["wrong_year"]["right"]),
         "missing_citation": "70%" in norm(bib),

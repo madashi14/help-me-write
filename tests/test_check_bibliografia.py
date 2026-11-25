@@ -102,15 +102,58 @@ GENERIC_NOTE = """Ricerca online: non disponibile.
 - Citazioni: [1]–[4] tutte presenti, nessuna mancante.
 """
 
+# the note of a substantively wrong review (task review, fix round 1): [1] "supportata"
+# with only a paraphrase, [3] "non risulta inventata", the 70% figure "non serve una
+# citazione", and a source asked for the student's own measure
+REVIEWER_NOTE = """Ricerca online: usata. Fonti locali: fonti/rossi2021.pdf ([1]), fonti/bianchi2020.pdf ([2]).
+
+## Citations
+| Key | Sentence | Verdict | Verified on | Source passage (page) | Note |
+|---|---|---|---|---|---|
+| [1] | «Secondo [1] la cache delle dipendenze riduce i tempi di build del 60%» (¶ 5) | supportata | testo completo | — | La fonte (p. 2) conferma: in pratica la cache riduce i tempi di build del 30% o più; non supportata solo la cifra esatta. |
+| [2] | «… prima del rilascio [2].» (¶ 5) | supportata | testo completo | «…» (p. 1) | |
+| [3] | «Approcci più sperimentali … [3].» (¶ 6) | non verificabile | non accessibile | — | testo completo non accessibile online |
+| [4] | «Le pipeline … [4].» (¶ 6) | non verificabile | non accessibile | — | |
+
+## Missing citations
+- ¶ 3: «il 70% delle aziende italiane usa pipeline CI» — conoscenza comune del settore: non serve una citazione.
+- ¶ 10: «Ho misurato la durata delle build … da 14 a 10 minuti» — dato numerico: serve una fonte.
+
+## Bibliography consistency
+- [1] Rossi, 2021: trovata, PDF locale fonti/rossi2021.pdf; dati come nella fonte.
+- [2] Bianchi (2018): trovata, PDF locale; dati come nella fonte (2020).
+- [3] Neri, 2018: trovata online (Google Scholar); dati come nella fonte, la voce non risulta inventata.
+- Citate ma assenti dalla bibliografia: [4] (¶ 6).
+- In bibliografia ma mai citate: nessuna.
+- Stile di citazione: numerico, uniforme.
+"""
+REVIEWER_EDITS = [
+    {"paragraph": 5, "find": "del 60%", "comment": "Cifra da ricontrollare.", "reason": "dato",
+     "by": "bibliografia"},
+    {"paragraph": 6, "find": "[4]", "comment": "[4] non è in bibliografia.",
+     "reason": "voce mancante", "by": "bibliografia"},
+    {"paragraph": 16, "find": "Quantum CI", "comment": "Voce trovata online.", "reason": "voce",
+     "by": "bibliografia"},
+    {"paragraph": 15, "find": "(2018)", "replace": "(2020)", "reason": "anno errato",
+     "by": "bibliografia"},
+]
+REVIEWER_REPORT = """# Revisione di bozza-bib.docx
+
+## Bibliografia
+
+[1] 60% contro 30%. [3] non verificabile. [2] 2018 → 2020. Il dato del 70% non richiede citazione. [4] citata.
+"""
+
 DEFECT_CHECKS = {
-    "wrong_claim": "wrong_claim: [1] not supported, source quoted with page",
-    "invented_entry": "invented_entry: [3] not found / invented / not verifiable",
+    "wrong_claim": "wrong_claim: [1] not supported, source quoted verbatim with page",
+    "invented_entry": "invented_entry: [3] not found or possibly invented",
     "wrong_year_note": "wrong_year: [2] with both years in the notes",
     "wrong_year_edit": "wrong_year: tracked change in the entry",
     "wrong_year_copy": "wrong_year: corrected in the copy's visible text",
-    "missing_citation": "missing_citation: the statement under ## Missing citations",
+    "missing_citation": "missing_citation: listed under ## Missing citations and commented",
     "missing_entry": "missing_entry: [4] missing from the bibliography",
     "personal": "no edit in the personal sentences",
+    "personal_missing": "no missing citation on the personal sentences",
     "comments": "comments in the revised copy",
     "report": "rapporto.md: Bibliography section populated",
 }
@@ -158,25 +201,59 @@ def test_a_generic_note_fails_every_defect(base, tmp_path, capsys):
     assert failed == set(DEFECT_CHECKS.values()) - {DEFECT_CHECKS["comments"]}
 
 
-@pytest.mark.parametrize("old, new, check", [
-    # the verdict of [1], the verbatim passage, its page
-    ("| non supportata | testo completo | «la cache", "| supportata | testo completo | «la cache",
+def test_a_substantively_wrong_review_fails(base, tmp_path, capsys):
+    failed = failed_checks(base, tmp_path, capsys, note=REVIEWER_NOTE, edits=REVIEWER_EDITS,
+                           report=REVIEWER_REPORT)
+    assert failed == {DEFECT_CHECKS[c] for c in ("wrong_claim", "invented_entry",
+                                                 "missing_citation", "personal_missing")}
+
+
+ONLINE = "Ricerca online: usata (solo ricerca web). Fonti locali"
+OFFLINE = "Ricerca online: non disponibile (nessuno strumento web). Fonti locali"
+ROW_1_NOTE_ONLY = ("| [1] | «Secondo [1] … del 60%» (¶ 5) | supportata | testo completo | — | "
+                   "Non supportata la cifra: «tempi di build del 30%» (p. 2). |")
+
+
+@pytest.mark.parametrize("changes, check", [
+    # the Verdict cell of [1], the Source passage cell: verbatim from page 2, with the page
+    ([("| non supportata | testo completo | «la cache", "| supportata | testo completo | «la cache")],
      "wrong_claim"),
-    ("riduce i tempi di build del 30% rispetto", "riduce del 30% i tempi di build rispetto",
+    ([(ROW_1, ROW_1_NOTE_ONLY)], "wrong_claim"),
+    ([("riduce i tempi di build del 30% rispetto", "riduce del 30% i tempi di build rispetto")],
      "wrong_claim"),
-    ("senza cache» (p. 2)", "senza cache»", "wrong_claim"),
-    (LINE_3, "- [3] Neri, 2018: trovata online, non inventata.", "invented_entry"),
-    (LINE_2, "- [2] Bianchi, 2018: trovata, PDF locale fonti/bianchi2020.pdf; dati corretti.",
-     "wrong_year_note"),
-    (MISSING, "- ¶ 8: «Ho configurato la cache» — serve una fonte.", "missing_citation"),
-    (LINE_4, "- Citazioni: [1]–[4] tutte presenti, nessuna mancante.", "missing_entry"),
+    ([("i tempi di build del 30% rispetto alle", "i tempi di build del 30% rispetto agli")],
+     "wrong_claim"),
+    ([("senza cache» (p. 2)", "senza cache» (p. 1)")], "wrong_claim"),
+    # [3] in Bibliography consistency; "non verificabile" only without online search
+    ([(LINE_3, "- [3] Neri, 2018: trovata online; la voce non risulta inventata.")],
+     "invented_entry"),
+    ([(LINE_3, "- [3] Neri, 2018: found online; it is not, as far as I can tell, invented.")],
+     "invented_entry"),
+    ([(OFFLINE, ONLINE)], "invented_entry"),
+    ([(LINE_3, "- [3] Neri, 2018: trovata online, dati come nella fonte.")], "invented_entry"),
+    (LINE_2, "wrong_year_note"),
+    ([(MISSING, "- ¶ 3: «Oggi il 70% delle aziende italiane usa pipeline CI» — conoscenza "
+                "comune: non serve una citazione.")], "missing_citation"),
+    ([(MISSING, "- ¶ 8: «Ho configurato la cache» — serve una fonte.")],
+     {"missing_citation", "personal_missing"}),
+    ([(MISSING, MISSING + "\n- ¶ 10: «Ho misurato la durata delle build … da 14 a 10 minuti» "
+                         "— dato numerico: serve una fonte.")], "personal_missing"),
+    ([(LINE_4, "- Citazioni: [1]–[4] tutte presenti, nessuna mancante.")], "missing_entry"),
+    # correct wordings that must pass
+    ([(LINE_4, "- [4]: citata (¶ 6) ma assente dalla bibliografia.")], set()),
+    ([(OFFLINE, ONLINE), (LINE_3, "- [3] Neri, 2018: possibile citazione inventata o errata: "
+                                  "non trovata online né in locale.")], set()),
 ])
-def test_each_defect_needs_its_own_evidence(base, tmp_path, capsys, old, new, check):
-    note = GOOD_NOTE.replace(ROW_3, ROW_3.replace("non verificabile", "supportata")) \
-        if check == "invented_entry" else GOOD_NOTE
-    assert old in note
-    assert failed_checks(base, tmp_path, capsys, note=note.replace(old, new)) == {
-        DEFECT_CHECKS[check]}
+def test_each_defect_needs_its_own_evidence(base, tmp_path, capsys, changes, check):
+    if isinstance(changes, str):  # wrong_year: the line without the years' difference
+        changes = [(changes, "- [2] Bianchi, 2018: trovata, PDF locale fonti/bianchi2020.pdf; "
+                             "dati corretti.")]
+    note = GOOD_NOTE
+    for old, new in changes:
+        assert old in note, old
+        note = note.replace(old, new)
+    names = {check} if isinstance(check, str) else check
+    assert failed_checks(base, tmp_path, capsys, note=note) == {DEFECT_CHECKS[n] for n in names}
 
 
 def test_edits_and_copy(base, tmp_path, capsys):
@@ -186,6 +263,9 @@ def test_edits_and_copy(base, tmp_path, capsys):
     no_year = [e for e in GOOD_EDITS if "replace" not in e]
     assert failed_checks(base, tmp_path / "y", capsys, edits=no_year) == {
         DEFECT_CHECKS["wrong_year_edit"], DEFECT_CHECKS["wrong_year_copy"]}
+    no_70 = [e for e in GOOD_EDITS if e["paragraph"] != 3]
+    assert failed_checks(base, tmp_path / "m", capsys, edits=no_70) == {
+        DEFECT_CHECKS["missing_citation"]}
     two_comments = [e for e in GOOD_EDITS if "replace" in e or e["paragraph"] in (5, 3)]
     assert failed_checks(base, tmp_path / "c", capsys, edits=two_comments) == {
         DEFECT_CHECKS["comments"]}

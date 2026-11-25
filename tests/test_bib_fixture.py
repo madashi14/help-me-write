@@ -54,13 +54,17 @@ def test_expected_describes_every_defect(draft):
     assert set(expected["defects"]) == DEFECTS
     d = expected["defects"]
     assert d["wrong_claim"]["key"] == "[1]" and "30%" in d["wrong_claim"]["quote"]
-    assert d["wrong_claim"]["page"] == 2
-    assert d["invented_entry"]["key"] == "[3]" and "non verificabil" in d["invented_entry"]["keywords"]
+    assert d["wrong_claim"]["page"] == 2 and d["wrong_claim"]["source"] == "fonti/rossi2021.pdf"
+    assert d["invented_entry"]["key"] == "[3]" and "inventat" in d["invented_entry"]["keywords"]
+    assert "non verificabil" in d["invented_entry"]["offline_keywords"]
+    assert "non verificabil" not in d["invented_entry"]["keywords"]
     assert d["wrong_year"] == {"key": "[2]", "wrong": "2018", "right": "2020"}
     assert d["missing_citation"]["keywords"] == ["70%"]
+    assert "il 70% delle aziende italiane usa pipeline CI" in d["missing_citation"]["sentence"]
     assert d["missing_entry"]["key"] == "[4]"
     for spec in d.values():
-        assert all(k == k.lower() for k in spec.get("keywords", []))
+        for k in spec.get("keywords", []) + spec.get("offline_keywords", []):
+            assert k == k.lower(), k
 
 
 def test_personal_sentences(draft, text):
@@ -90,8 +94,9 @@ def test_bibliography_entries(paragraphs):
     assert entries[2] == "[3] Neri, P. (2018). Quantum CI. doi:10.9999/fake.2018"
 
 
-def test_missing_citation_and_missing_entry(paragraphs):
+def test_missing_citation_and_missing_entry(draft, paragraphs):
     p = _paragraph_with(paragraphs, "il 70% delle aziende italiane usa pipeline CI")
+    assert draft[1]["defects"]["missing_citation"]["sentence"] in p["text"]
     sentence = next(s for s in re.split(r"(?<=\.)\s+", p["text"]) if "70%" in s)
     assert not re.search(r"\[\d+\]", sentence)
     assert "[4]" in _paragraph_with(paragraphs, "[4]")["text"]

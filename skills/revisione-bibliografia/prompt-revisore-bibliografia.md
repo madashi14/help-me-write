@@ -135,10 +135,13 @@ Write two files and nothing else:
      the words the source contradicts or on the citation; a missing citation, on the
      statement; a citation without entry, on the citation; an entry not found, on the
      entry.
-   - A correction of reference data you read in the source (year, author's name, title,
-     venue, DOI) is a `replace` in the entry, with the page in `reason`. Never change what
-     the text claims (a number, a statement) and never insert a citation or a source:
-     comment instead.
+   - A correction of reference data (year, author's name, title, venue, DOI) is a
+     `replace` in the entry only when you read the right value on the first page of a
+     local PDF, or on a DOI or publisher record you opened; `reason` names that page or
+     record. A value seen only in a search-result snippet, or anywhere else, becomes a
+     comment on the entry proposing the correction and saying where you saw it. Never
+     change what the text claims (a number, a statement) and never insert a citation or
+     a source: comment instead.
    - `paragraph` is the `id` from the extract; for a tex document write `"file"` and
      `"line"` from the paragraph instead. `find` is copied exactly, character for
      character, from that paragraph's `text` (same apostrophes, accents, spaces and

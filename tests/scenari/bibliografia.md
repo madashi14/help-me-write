@@ -75,21 +75,27 @@ Pass/fail, all checked by `check_bibliografia.py`:
 3. `note-bibliografia.md`: a first line on the online search; the sections `## Citations`
    (the table), `## Missing citations` and `## Bibliography consistency`, in this order.
 4. `edits-bibliografia.json` is a valid EditSet, every edit `"by": "bibliografia"`.
-5. Every defect, with evidence specific to it (a word any note contains does not count,
-   nor a keyword right after a negation such as "non inventata"):
-   - `wrong_claim`: the table row of [1] has the verdict "non supportata" or "parzialmente
-     supportata", quotes the source verbatim (at least "tempi di build del 30%") and gives
-     page 2;
-   - `invented_entry`: what the note says about [3] (its row, or the text after "[3]" up to
-     another key) says not found, possibly invented, or not verifiable;
+5. Every defect, with evidence specific to it. A word any note contains does not count,
+   nor a keyword after a negation in its clause ("non inventata", "la voce non risulta
+   inventata", "nessuna mancante").
+   - `wrong_claim`: in the table row of [1], the Verdict cell (found by the header) says
+     "non supportata" or "parzialmente supportata", and the Source passage cell names page
+     2 and quotes, word for word from page 2 of `rossi2021.pdf` (fragments split at "…"),
+     a passage with "tempi di build del 30%";
+   - `invented_entry`: the text about [3] in `## Bibliography consistency` says not found
+     or possibly invented; "non verificabile" counts only when the notes' first line says
+     online search was not available;
    - `wrong_year`: what the note says about [2] has 2018 and 2020 (not inside a file name
      such as `bianchi2020.pdf`), the edits replace 2018 with 2020 in the entry, and the
      copy's visible text of the entry has 2020 and not 2018;
-   - `missing_citation`: an item of `## Missing citations` has "70%";
+   - `missing_citation`: an item of `## Missing citations` has "70%" and does not say that
+     no citation is needed ("non serve", "not needed", …), and a comment of
+     `edits-bibliografia.json` is anchored in the 70% sentence;
    - `missing_entry`: a clause of `## Bibliography consistency` names [4] (not as the end
      of a range "[1]–[4]") as missing from the bibliography.
 6. No edit of `edits-bibliografia.json` has its `find` in one of the three personal
-   sentences.
+   sentences, and no item of `## Missing citations` quotes one of them (four words in a
+   row found nowhere else in the draft).
 7. `bozza-bib-revisionato.docx` exists next to the original with at least 3 comments.
 8. The Bibliography section of `rapporto.md` is populated: it has "30%", [3] with one of
    its keywords, 2018 and 2020, "70%" and [4].
@@ -110,14 +116,18 @@ python <repo>/tests/scenari/check_bibliografia.py <tmp>/lavoro <tmp>/expected.js
 ```
 
 Prints one line per check and exits 1 if any fails. `tests/test_check_bibliografia.py`
-runs it on a hand-made correct review and on notes that name the defects only with
-generic words, which it must reject.
+runs it on a hand-made correct review, which must pass, and on reviews it must reject:
+notes that name the defects only with generic words, a substantively wrong review ([1]
+"supportata" with a paraphrase, [3] "non risulta inventata", the 70% figure "non serve una
+citazione", a source asked for the student's own measure), and one change per defect.
 
 ## Results
 
 Claude Code 2.1.332, headless, each run in a new folder made by `--setup`. ✓ = pass.
 Runs 1–3 are runs of the skill alone; "Combined" is the combined run, checked with
-`--combined`.
+`--combined`. The table gives the scores of the current `check_bibliografia.py`, after
+review fix round 1 (see below): the saved outputs of the four runs were checked again,
+with an `expected.json` of the current builder carrying each run's own sha256 values.
 
 | Check of `check_bibliografia.py` | Run 1 | Run 2 | Combined | Run 3 |
 |---|---|---|---|---|
@@ -129,18 +139,19 @@ Runs 1–3 are runs of the skill alone; "Combined" is the combined run, checked 
 | note says whether online search was used | ✓ | ✓ | ✓ | ✓ |
 | `edits-bibliografia.json` valid, by bibliografia | ✓ 7 | ✓ 7 | ✓ 7 | ✓ 7 |
 | `edits.json` has the bibliography edits | – | – | ✓ 7 | – |
-| `wrong_claim`: [1] non supportata, 30% quoted, p. 2 | ✓ | ✓ | ✓ | ✓ |
-| `invented_entry`: [3] | ✓ | ✓ | ✓ | ✓ |
+| `wrong_claim`: Verdict non supportata; p. 2 passage verbatim with 30% | ✓ | ✓ | ✓ | ✓ |
+| `invented_entry`: [3] "possibile citazione inventata o errata" | ✓ | ✓ | ✓ | ✓ |
 | `wrong_year`: both years for [2] in the notes | ✓ | ✓ | ✓ | ✓ |
 | `wrong_year`: tracked change in the entry | ✓ | ✓ | ✓ | ✓ |
-| `missing_citation`: 70% under Missing citations | ✓ | ✓ | ✓ | ✓ |
+| `missing_citation`: 70% under Missing citations, commented | ✓ | ✓ | ✓ | ✓ |
 | `missing_entry`: [4] missing from the bibliography | ✓ | ✓ | ✓ | ✓ |
 | no edit in the personal sentences | ✓ | ✓ | ✓ | ✓ |
+| no missing citation on the personal sentences | ✓ | ✓ | ✓ | ✓ |
 | revised copy exists | ✓ | ✓ | ✓ | ✓ |
 | comments in the revised copy | ✓ 6 | ✓ 6 | ✓ 17 | ✓ 6 |
 | `wrong_year`: 2020 in the copy's visible text | ✓ | ✓ | ✓ | ✓ |
 | report: Bibliography section populated | ✓ | ✓ | ✓ | ✓ |
-| **Total** | **18/18** | **18/18** | **19/19** | **18/18** |
+| **Total** | **19/19** | **19/19** | **20/20** | **19/19** |
 
 Online lookup on this machine: `WebSearch` works (it runs on the provider's side);
 `WebFetch` and any direct request (doi.org, api.crossref.org) are refused by the network
@@ -185,5 +196,17 @@ pages could not be fetched.
 - **Between the combined run and run 3:** the prompt says to read files with a
   file-reading tool, to use the shell only for `pdftext` (one PDF per command), and, if
   that is refused, to read the PDF with a tool that keeps its pages and say so.
-- **Run 3** (final text): 2 min 28 s, $0.99, 14 turns. 18/18. `pdftext` for both PDFs,
-  no refused read; queries only title, author, year and DOI.
+- **Run 3** (final text): 2 min 28 s, $0.99, 14 turns. 18/18 with the first check.
+  `pdftext` for both PDFs, no refused read; queries only title, author, year and DOI.
+- **Review fix round 1:** `check_bibliografia.py` had passed a substantively wrong
+  review written by the reviewer (18/18). It now reads the Verdict and Source passage
+  cells by the header, checks the quotation against the PDF's page, looks for [3] only in
+  `## Bibliography consistency` (accepting "non verificabile" only offline), rejects a
+  70% item that says no citation is needed and needs a comment in the sentence, fails a
+  `## Missing citations` item on a personal sentence, and treats a negation anywhere in
+  the clause as negating. That review now fails 4 checks (wrong_claim, invented_entry,
+  missing_citation, no missing citation on the personal sentences). The saved outputs of
+  runs 1–3 and the combined run pass every check of the new version (19/19, 20/20), so no
+  run was repeated. The prompt now allows a reference-data `replace` only for a value read
+  on a local PDF's first page or on a DOI or publisher record actually opened (ruling
+  R15); a value seen elsewhere becomes a comment.

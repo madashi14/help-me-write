@@ -272,14 +272,16 @@ _BIB_PERSONAL = [
     "durata media è scesa da 14 a 10 minuti.",
 ]
 
+_BIB_UNCITED = ("Oggi il 70% delle aziende italiane usa pipeline CI per compilare e verificare "
+                "il proprio software, e Beta Software le usa da alcuni anni.")
+
 _BIB_DRAFT = [
     ("Title", "Relazione di fine tirocinio"),
     "Studentessa: Giulia Ferraro - Struttura ospitante: Beta Software S.r.l.",
     ("Heading 1", "Introduzione"),
     "Il tirocinio si è svolto presso Beta Software tra febbraio e maggio 2026 ed è stato "
     "dedicato a ridurre i tempi della pipeline di integrazione continua (CI) del gestionale "
-    "dell'azienda. Oggi il 70% delle aziende italiane usa pipeline CI per compilare e "
-    "verificare il proprio software, e Beta Software le usa da alcuni anni.",
+    "dell'azienda. " + _BIB_UNCITED,
     ("Heading 1", "Contesto"),
     "Una pipeline CI compila il codice ed esegue i test a ogni modifica. L'esecuzione dei "
     "test automatici a ogni modifica permette di individuare la maggior parte dei difetti "
@@ -411,24 +413,29 @@ def build_bib_draft(folder) -> dict:
         "min_comments": 3,
         "personal_sentences": list(_BIB_PERSONAL),
         "defects": {
-            # the row of [1] in the notes: verdict not / partially supported, the source
-            # passage quoted verbatim (at least these words) with its page
-            "wrong_claim": {"key": "[1]", "quote": "tempi di build del 30%", "page": 2,
+            # the row of [1] in the notes' table: in its Verdict cell not / partially
+            # supported; in its Source passage cell a quotation verbatim from the source's
+            # page (these words at least) and that page
+            "wrong_claim": {"key": "[1]", "source": "fonti/rossi2021.pdf", "page": 2,
+                            "quote": "tempi di build del 30%",
                             "verdicts": ["non supportat", "parzialmente supportat",
                                          "not supported", "partially supported"]},
-            # a statement about [3] in the notes: not found, possibly invented, or not
-            # verifiable (no network)
+            # the line of [3] in "## Bibliography consistency": not found or possibly
+            # invented; "not verifiable" only when the notes say online search was not
+            # available
             "invented_entry": {"key": "[3]", "keywords": [
                 "inventat", "non trovat", "non è stata trovat", "non è stato trovat",
-                "nessuna traccia", "non verificabil", "non verificat", "inesistent",
-                "non esist", "fittizi", "invented", "not found", "not been found",
-                "no record", "not verifiable", "unverifiable", "not verified",
-                "does not exist", "fictitious"]},
+                "nessuna traccia", "inesistent", "non esist", "fittizi", "invented",
+                "not found", "not been found", "no record", "does not exist",
+                "fictitious"],
+                "offline_keywords": ["non verificabil", "not verifiable", "unverifiable",
+                                     "cannot be verified"]},
             # a statement about [2] in the notes with both years; a tracked change in
             # its entry from 2018 to 2020
             "wrong_year": {"key": "[2]", "wrong": "2018", "right": "2020"},
-            # an item of "## Missing citations" with this text
-            "missing_citation": {"keywords": ["70%"]},
+            # an item of "## Missing citations" with this text that does not say that no
+            # citation is needed, and a comment anchored in the sentence
+            "missing_citation": {"keywords": ["70%"], "sentence": _BIB_UNCITED},
             # [4] in "## Bibliography consistency" as missing from the bibliography
             "missing_entry": {"key": "[4]", "keywords": [
                 "assent", "manc", "non present", "non è present", "non compar",

@@ -122,6 +122,13 @@ def test_revisore_bibliografia_prompt_contract():
                    "title, authors, year and DOI", "not verifiable", "possible invented or wrong",
                    "page", "author's own work"]:
         assert needed in text, needed
+    # a reference-data replace only from a value read on the source itself (ruling R15)
+    rule = re.search(r"^   - A correction of reference data.*?(?=^   - )", text, re.S | re.M)
+    assert rule, "the reference-data correction rule"
+    rule = " ".join(rule.group(0).split())
+    for needed in ["first page of a local PDF", "record you opened", "search-result snippet",
+                   "becomes a comment", "where you saw it"]:
+        assert needed in rule, needed
     _, body = _split(folder / "SKILL.md")
     assert "./prompt-revisore-bibliografia.md" in body
     for output in ["bib.json", "edits-bibliografia.json", "note-bibliografia.md"]:
