@@ -248,7 +248,9 @@ def next_step(work, state: ProjectState) -> dict:
         if c.status in phases:
             phase, why = phases[c.status]
             return step(phase, why, c.id)
-    if all(c.status == "revisionato" for c in chapters) and chapters:
+    if not chapters:
+        return step("struttura", "the approved outline has no chapters")
+    if all(c.status == "revisionato" for c in chapters):
         return step("fine", "every chapter is reviewed")
     return step("revisione", "all chapters are approved: review the whole document")
 

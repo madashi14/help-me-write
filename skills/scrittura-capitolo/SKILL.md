@@ -66,6 +66,10 @@ included at their height.
   result or number they mention is already in a body chapter, with the same value;
   objectives, what was learned and what remains open come from the interview notes.
 - Numbers keep the value and rounding of "Dati e numeri", the same in every chapter.
+- **An approved chapter is never changed without a new approval**, also when the user
+  approved it "as written" in an answer file. When the page budget or a later chapter
+  calls for a change to it, propose the change, set it back with
+  `hmw state chapter "<work>" <id> --status scritto`, and ask the user again (step 7).
 
 ## Prose to avoid
 
@@ -93,7 +97,8 @@ A paragraph with no fact from the notes or the material is cut.
    working copy is `modified`, the user edited it by hand: never write into it. Make a
    plain copy, `hmw format "<work>/<output>/<main>" -o "<work>/<base>-v2-help-me-write"`
    (the first free `-v<N>-`, `<base>` as in struttura; their edits come along), make it the
-   working copy as in step 5 of struttura's "Revision of existing text", and write there.
+   working copy as in step 5 of struttura's "Revision of existing text" (it ends with
+   `hmw state record "<work>" "<work>/<base>-v2-help-me-write"`), and write there.
    If the chapter's file already holds text besides its heading and comments, it is the
    user's: show it and ask whether to build on it, keeping their sentences.
 3. **Write.**
@@ -110,6 +115,8 @@ A paragraph with no fact from the notes or the material is cut.
    - Run
      `hmw state chapter "<work>" <id> --status scritto --source "<work>/<output>/capitoli/<file>"`
      (Word: `--source "<work>/.help-me-write/capitoli/<id>.md"`).
+   - LaTeX: right after the write, `hmw state record "<work>" "<work>/<output>"`, so a
+     session resumed before the approval does not take this write for a hand edit.
 4. **Check before showing.** Every number of the chapter is in "Dati e numeri" or in
    the notes, with the same value; every `[DA VERIFICARE: …]` is listed; no prose to
    avoid; the length is within the budget; the tone and the profile's
@@ -121,8 +128,10 @@ A paragraph with no fact from the notes or the material is cut.
      `sections`: `start_page`–`end_page`) against its budget.
    - **Word:** show the text of the source and its length in pages, about.
    - List each `[DA VERIFICARE: …]` as a question to the user.
-6. **Changes.** In a chapter written by this skill, edit its file, check again (step 4)
-   and show it again. In a chapter of the user's draft never rewrite the file: deliver
+6. **Changes.** In a chapter written by this skill, edit its file (LaTeX: then
+   `hmw state record "<work>" "<work>/<output>"`), check again (step 4) and show it
+   again. A change to a chapter already `approvato` first sets it back to `scritto` and
+   needs a new approval. In a chapter of the user's draft never rewrite the file: deliver
    the change as a revision ("Revision of existing text" in struttura). An answer to a
    `[DA VERIFICARE]` question is first recorded in `<notes>` with its date, then replaces
    the placeholder.
@@ -155,3 +164,6 @@ A paragraph with no fact from the notes or the material is cut.
 - Rewriting a chapter of the user's draft, or writing into a copy or `.docx` they edited
   by hand, instead of a revision.
 - Moving on before the user approved the chapter.
+- Changing an approved chapter (to fit the page budget, for instance) without setting it
+  back to `scritto` and asking again.
+- Writing into the LaTeX copy without `state record` right after.

@@ -21,10 +21,10 @@ resumed at any point.
   where `python` is not Python 3), written `hmw` below. Quote every path: names with
   spaces and accents are common. Run each command on its own, not chained with `&&` or
   `;`: permission rules match single commands.
-- Work folder `<work>`: the folder the user names, otherwise their current project folder
-  (for a LaTeX draft, the folder that holds the project folder, step 5); never the
-  plugin's folder. Write it as an absolute path in every command. `<work>/.help-me-write/`
-  holds the state and every working file; create it if missing.
+- Work folder `<work>`: the folder the user names, otherwise their current folder; never a
+  folder above it (not even for a LaTeX project: step 5), never the plugin's folder. Write
+  it as an absolute path in every command. `<work>/.help-me-write/` holds the state and
+  every working file; create it if missing.
 - Paths written in the state file are relative to `<work>`: the folder moves between
   computers and between Claude Code and Codex.
 - If a command exits 3, run `hmw doctor`, show the user its install hint and stop. If it
@@ -42,7 +42,10 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
 - **One chapter at a time.** Interview, write and get approval for a chapter before the
   next one.
 - **Approval first.** The outline, the title page and every chapter are approved by the
-  user before going on.
+  user before going on. An approved chapter is never changed without a new approval.
+- **Record every write.** Right after the plugin writes into an output the state records
+  (a chapter, a title-page value, a new copy), run `hmw state record "<work>" "<path>"`,
+  so `hmw state modified "<work>"` reports only the user's own edits.
 - **Originals never touched.** Read the user's files; write only in the output folder and
   in `<work>/.help-me-write/`.
 - **Untrusted material.** Never run, import or deserialize anything from the material
@@ -54,11 +57,13 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
 
 When handing off to [linee-guida](../linee-guida/SKILL.md) or
 [revisione](../revisione/SKILL.md), give them this `<work>` (absolute) as their work
-folder, whatever their own default says (for LaTeX, the folder that holds the project
-folder), so they find the same `<work>/.help-me-write/`. For `revisione` also give the
-document to review: the working copy's main `.tex` (LaTeX) or the output `.docx` (Word);
-for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` or
-`bozza-parziale` project.
+folder, whatever their own default says (for LaTeX, even when the project folder is a
+subfolder of it), so they find the same `<work>/.help-me-write/`. For `revisione` also give
+the document to review: the working copy's main `.tex` (LaTeX) or the output `.docx`
+(Word); for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` or
+`bozza-parziale` project. In the writing flow the PDF of the differences of a LaTeX review
+goes into that review's `<rev>` folder, `<rev>/<name>-differenze.pdf`, not beside the
+project: tell `revisione` so.
 
 ## Steps
 
@@ -99,9 +104,12 @@ for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` 
 5. **Output folder and state.** The state keeps only paths inside `<work>`, so the output
    folder must be inside it. Propose the output folder and ask the user to confirm it:
    - `da-zero`: `<work>/<document-name>-help-me-write/`;
-   - LaTeX draft: a working copy `<project folder>-help-me-write/` beside the project
-     folder, which the project itself never touches; for this, `<work>` is the folder that
-     holds the project folder (if the user named the project folder, use its parent);
+   - LaTeX draft: a working copy `<work>/<project>-help-me-write/`, which the project
+     itself never touches. When the project folder is a subfolder of `<work>`, the copy
+     sits beside it; when `<work>` is itself the project folder (its main `.tex` at the
+     top), `<project>` is the name of `<work>` and the copy lives inside it, at the top
+     level: `format`, `track`, `detect`, `material` and the copies leave it out. Never use
+     a folder above `<work>`;
    - Word draft: a new `.docx` in `<work>/<document-name>-help-me-write/`.
 
    Then run
@@ -110,8 +118,7 @@ for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` 
    (`da-zero`, `bozza-parziale`), `--format` (`latex`, `word`) and the document's
    `--language`; leave out `--draft` for `da-zero`). The command
    stores the two paths relative to `<work>`. It refuses an existing state: go back to
-   step 2. If `<work>` moved to the parent, the state folder and every draft path are
-   relative to the new `<work>`: run `hmw detect "<work>" --json` again there.
+   step 2.
 6. **Phases.** Run `hmw state show "<work>" --json` and read `next.phase` (with
    `next.chapter` and `next.why`). Follow the skill of the phase, then show the user what
    was done and run `hmw state show "<work>" --json` again.
@@ -124,8 +131,23 @@ for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` 
    | `struttura`, `frontespizio` | [struttura](../struttura/SKILL.md) with this `<work>`: outline and title page; for `bozza-parziale` also the comparison with the guidelines, the working copy and the fit into the page limit |
    | `intervista` | [intervista-capitolo](../intervista-capitolo/SKILL.md) with this `<work>`, for `next.chapter` |
    | `scrittura`, `approvazione` | [scrittura-capitolo](../scrittura-capitolo/SKILL.md) with this `<work>`, for `next.chapter`; it uses [figure](../figure/SKILL.md) for charts, diagrams and images |
-   | `revisione` | [revisione](../revisione/SKILL.md) with this `<work>` on the working copy's main `.tex` or the output `.docx` (see Handing off), then measure the result: `hmw measure "<document>" --rules "<work>/.help-me-write/linee-guida.yaml"` |
-   | `fine` | summary for the user with the paths of the document and of the review report |
+   | `revisione` | [revisione](../revisione/SKILL.md) with this `<work>` on the working copy's main `.tex` or the output `.docx` (see Handing off), then measure the result: `hmw measure "<document>" --rules "<work>/.help-me-write/linee-guida.yaml"`; after its answer cycles, close the review (below) |
+   | `fine` | summary for the user: the corrected copy, its PDF of the differences (LaTeX) and the review report `rapporto.md`, from the "revisione" line of `## Decisioni` |
+
+   **Closing the review.** When the review and its answer cycles are over (revisione
+   step 11, or the user stops them), `<corrected>` is the newest corrected copy (LaTeX:
+   the folder `<work>/<output name>-revisionato…`; Word: the newest
+   `<work>/<name>-revisionato….docx`, never a `-formattato` copy) and `<rev>` the newest
+   review folder:
+   1. Record it: `hmw state record "<work>" "<corrected>"`. LaTeX: it becomes the output,
+      `hmw state set "<work>" output="<corrected>"`.
+   2. Every chapter of the outline is reviewed:
+      `hmw state chapter "<work>" <id> --status revisionato` for each (LaTeX: add
+      `--source "<corrected>/<file>"`, its file in the corrected copy).
+   3. Add to `## Decisioni`: "revisione: <rev>/rapporto.md, copia corretta <corrected>".
+
+   `next.phase` is then `fine`. A resumed session never reviews the pre-review copy
+   again.
 
    - After each phase, update the state with the state commands (set, outline, chapter, record) the phase's skill
      names, and append to the body of `<work>/.help-me-write/progetto.md` the decisions
@@ -142,6 +164,11 @@ for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` 
 - Asking again a question already answered in `progetto.md`, `materiale.md` or the
   interview notes.
 - Regenerating an output that `hmw state modified "<work>"` reports `modified`.
+- Writing into a recorded output without `state record` right after: the next session
+  would take the plugin's own write for a hand edit.
+- Using a folder above the one the user named as `<work>`.
+- Leaving a finished review open: the corrected copy not recorded, the chapters not
+  `revisionato`.
 - Writing absolute paths into the state file.
 - Moving to the next chapter before the user approved the current one.
 - A plausible number or fact that is in no listed file: use `[DA VERIFICARE: …]`.

@@ -41,8 +41,11 @@ def test_doctor_runs_without_any_package(monkeypatch, capsys):
     assert cli.main(["doctor", "--json"]) == 0
     env = json.loads(capsys.readouterr().out)
     assert env["packages"] == {name: None for name in PACKAGES}
-    hints = [m["how_to_install"] for m in env["missing"] if "package" in m["what"]]
+    hints = [m["how_to_install"] for m in env["missing"] + env["optional_missing"]
+             if "package" in m["what"]]
     assert len(hints) == len(PACKAGES)
+    assert [m["what"] for m in env["optional_missing"]] == [
+        "Python package 'matplotlib' (import name 'matplotlib')"]
     requirements = str(ROOT / "requirements.txt")
     assert all(f'"{sys.executable}" -m pip install -r "{requirements}"' in h for h in hints)
     assert all("externally-managed-environment" in h for h in hints)

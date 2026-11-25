@@ -19,14 +19,19 @@ invented, and every change to text the user wrote is delivered as a reviewable r
   where `python` is not Python 3), written `hmw` below. Quote every path. Run each command
   on its own, not chained with `&&` or `;`.
 - `<work>`: the work folder the entry skill [help-me-write](../help-me-write/SKILL.md)
-  gives you (it holds the material and, for a LaTeX draft, the project folder), as an
-  absolute path in every command. The fixed rules of that skill apply here.
+  gives you (it holds the material and, for a LaTeX draft, the project folder, or is the
+  project folder), as an absolute path in every command. Never a folder above it. The
+  fixed rules of that skill apply here.
 - From `hmw state show "<work>" --json`: `<output>` is the output folder (`output`),
   `<draft>` the draft (`draft`), both relative to `<work>`. For a LaTeX draft,
   `<project>` is the draft's project folder and `<main>` its main file name
   (`<draft>` = `<project>/<main>`); `<output>` is then the working copy
-  `<project>-help-me-write`. In a new LaTeX project `<main>` is `main.tex`. `<name>` is
-  the document name: `<output>` without `-help-me-write`.
+  `<project>-help-me-write`. When the main file is at the top of `<work>`
+  (`<draft>` = `<main>`), the project is `<work>` itself, `<project>` is the name of
+  `<work>`, and the working copy `<work>/<project>-help-me-write` lives inside it, at the
+  top level (`format`, `track`, `detect` and `material` leave it out). In a new LaTeX
+  project `<main>` is `main.tex`. `<name>` is the document name: `<output>` without
+  `-help-me-write`.
 - If a command exits 3, run `hmw doctor` and show its install hint. Exit 2: show the
   message, it names the field or file at fault.
 
@@ -116,8 +121,9 @@ confirm. A value not given stays `[DA VERIFICARE: <what>]`.
   `hmw measure "<work>/<output>/main.tex" --rules "<work>/.help-me-write/linee-guida.yaml" --workdir "<work>/.help-me-write/pdf" -o "<work>/.help-me-write/misure/progetto.json"`;
   the `pdf` of the JSON has the title page on page 1: give the user its path. Failed
   checks are expected here, the chapters are empty. To change a value, edit its
-  `\newcommand` line in `<work>/<output>/main.tex` and compile again. On approval run
-  `hmw state record "<work>" "<work>/<output>"`.
+  `\newcommand` line in `<work>/<output>/main.tex` and compile again. Run
+  `hmw state record "<work>" "<work>/<output>"` right after `latex-init` and after each
+  such edit, and again on approval.
 
 **D4. Word: chapter files.** Create `<work>/.help-me-write/capitoli/` with one file
 `<id>.md` per chapter holding only its heading (`# <title>`), and
@@ -186,8 +192,9 @@ never by rewriting the files. Ask the user to approve the plan, then:
 rules, propose to fix the layout in the copy (the user's files stay as they are) and ask.
 - **LaTeX**, accepted: `hmw format "<work>/<draft>" --layout "<work>/.help-me-write/layout.json" -o "<work>/<output>"`;
   declined: `hmw format "<work>/<draft>" -o "<work>/<output>"` (a plain copy).
-- **Word**, accepted: `hmw format "<work>/<draft>" --layout "<work>/.help-me-write/layout.json" -o "<work>/<output>/<name>.docx"`;
-  declined: no copy yet, the draft is the base of the first revision.
+- **Word**, accepted: `hmw format "<work>/<draft>" --layout "<work>/.help-me-write/layout.json" -o "<work>/<output>/<name>.docx"`
+  (it creates `<work>/<output>/`); declined: no copy yet, the draft `<work>/<draft>` is
+  the input of the first revision (see "Revision of existing text").
 
 If `changes` says "font not changed", tell the user that the draft's font is not an
 allowed one; changing it is their decision (a `\setmainfont` edit in P6). Record the copy:
@@ -202,15 +209,17 @@ the preamble of `<main>`, such as `\NomeStudente` or `\MatricolaStudente`). List
 with its value in the copy and ask the user, in one grouped question, for every
 placeholder and to confirm the values already filled. Never deduce name, student number
 or codes. Write the answers into those lines of `<work>/<output>/<main>` (the copy, never
-the draft), escaping `& % $ # _ { } ~ ^ \`; compile with the measure command of P6.1
+the draft), escaping `& % $ # _ { } ~ ^ \`, and right after the write run
+`hmw state record "<work>" "<work>/<output>"`; compile with the measure command of P6.1
 and give the user the PDF path (`pdf` in the JSON, title page on page 1). Word: write the
 values file as in D3 without `start_at` and fill the placeholders of the copy's title
 page with
 `hmw titlepage "<work>/<output>/<name>.docx" --values "<work>/.help-me-write/frontespizio-valori.json" -o "<work>/<output>/<name>-v2.docx"`
-(the whole document is kept). Check `replaced`: a placeholder in a text box counts 2,
-because Word stores two copies of it; a higher count means the text also occurs in the
-body: use a longer `find`. On approval record the copy (LaTeX
-`hmw state record "<work>" "<work>/<output>"`; Word
+(the whole document is kept; without a copy, the input is `<work>/<draft>`), then
+`hmw state record "<work>" "<work>/<output>/<name>-v2.docx"`. Check `replaced`: a
+placeholder in a text box counts 2, because Word stores two copies of it; a higher count
+means the text also occurs in the body: use a longer `find`. On approval record the copy
+again (LaTeX `hmw state record "<work>" "<work>/<output>"`; Word
 `hmw state record "<work>" "<work>/<output>/<name>-v2.docx"`) and add "frontespizio
 approvato" to `## Decisioni`.
 
@@ -240,7 +249,11 @@ approvato" to `## Decisioni`.
    characters removed divided by `target_chars`, plus the partial last line of each
    removed paragraph; a figure saves its height. Add the total against the lines to
    remove. Never cut the personal contribution, the results with their numbers, or what
-   the author's notes ask to keep (a distinction they want explicit stays).
+   the author's notes ask to keep (a distinction they want explicit stays). A chapter
+   already `approvato` (in the state, or approved "as written" in the user's answers) is
+   never changed without a new approval: propose its cut like any other, set it back with
+   `hmw state chapter "<work>" <id> --status scritto` and ask the user again; never
+   shorten it silently to meet the budget.
 5. **Rules.** To gain pages, never reduce the font size, the margins or the line
    spacing beyond the limits of the guidelines, and do not change the layout. Never
    write new text that adds facts: condensing reuses only sentences and facts already
@@ -251,7 +264,7 @@ approvato" to `## Decisioni`.
    <rev>/tagli.md" to `## Domande aperte`, show the table and ask which cuts to apply.
    Apply the approved ones as in "Revision of existing text": an EditSet
    `<rev>/tagli.json`, applied by track into a new copy, and in LaTeX texdiff for the PDF
-   of the differences. Measure the new copy; still over the target: propose another round from
+   of the differences, written into `<rev>`. Measure the new copy; still over the target: propose another round from
    P6.4, or let the user decide. Record the outcome in `## Decisioni` (applied, partly,
    or declined).
 7. Run `hmw state set "<work>" title_page_approved=true`. For a partial draft it is set
@@ -278,8 +291,9 @@ Every change to text the user wrote (cuts, a fix they asked for in a draft chapt
 title) and every change to an output they edited by hand goes this way, never by
 rewriting a file.
 1. `<rev>` as in P6.6. Run `hmw extract "<work>/<output>/<main>" -o "<rev>/testo.json"`
-   (Word: the working `.docx`): each LaTeX line with `file` and `line`, each Word
-   paragraph with its `id`, and its text.
+   (Word: the working `.docx`; with no copy yet, P4 declined, the draft `<work>/<draft>`):
+   each LaTeX line with `file` and `line`, each Word paragraph with its `id`, and its
+   text.
 2. Write the EditSet (format: the docstring of
    [edits.py](../../scripts/helpmewrite/edits.py)), e.g. `<rev>/tagli.json`:
 
@@ -300,13 +314,16 @@ rewriting a file.
    - LaTeX:
      `hmw track "<work>/<output>/<main>" --edits "<rev>/tagli.json" -o "<work>/<base>-v2-help-me-write" --json`,
      then
-     `hmw texdiff "<work>/<output>/<main>" "<work>/<base>-v2-help-me-write/<main>" -o "<work>/<base>-v2-differenze.pdf"`.
+     `hmw texdiff "<work>/<output>/<main>" "<work>/<base>-v2-help-me-write/<main>" -o "<rev>/<base>-v2-differenze.pdf"`.
      `<base>` is the first working copy's name without `-help-me-write` (`<project>`, or
      `<name>` in `da-zero`); use the first free `-v<N>-`. The name keeps ending in
-     `-help-me-write`, so `detect` and `material` skip it.
+     `-help-me-write`, so `detect`, `material`, the copies and the bibliography source
+     search skip it; the PDF of the differences stays in `<rev>`, never beside the drafts.
    - Word:
      `hmw track "<work>/<output>/<name>.docx" --edits "<rev>/tagli.json" -o "<work>/<output>/<name>-v2.docx" --json`
-     (the newest version as input, the first free `-v<N>` as output).
+     (the newest version as input, the first free `-v<N>` as output; with no copy yet,
+     the input is `<work>/<draft>` and the output `<work>/<output>/<name>.docx`: track
+     creates the folder).
    - Exit 0: all applied. Exit 1: the copy is written, the edits under `failed` and
      `conflicts` were not applied: fix their `find` from the extract in another round, or
      list them for the user. Exit 2: nothing written; read the message (an invalid
@@ -331,3 +348,5 @@ rewriting a file.
 - A path in a command without `<work>/` or `<rev>/` in front, or a state path outside
   `<work>`.
 - Setting `title_page_approved=true` for a partial draft before the fit into the pages.
+- Cutting a chapter the user already approved without asking again.
+- Writing into the working copy without `state record` right after.

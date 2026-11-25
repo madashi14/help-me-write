@@ -41,8 +41,9 @@ added that nobody read, and no citation is called verified that was not.
 
 1. **Find the document and check the tools.** Use the file the user names; otherwise
    look for it as step 1 of the revisione skill does. Run `hmw doctor`: every Python
-   package is needed. If one is missing, tell the user how to install it (the `doctor`
-   output says) and stop. `latexmk` and `latexdiff` are needed only for the PDF of
+   package under its `missing` is needed (not matplotlib, which it lists under
+   `optional_missing`: charts and diagrams only). If one is missing, tell the user how to
+   install it (the `doctor` output says) and stop. `latexmk` and `latexdiff` are needed only for the PDF of
    differences of a `.tex`: without them, skip that PDF and say why.
 2. **Profile and guidelines.** If `<work>/.help-me-write/linee-guida.yaml` exists, it is
    the guidelines, and its `document_type` names the profile

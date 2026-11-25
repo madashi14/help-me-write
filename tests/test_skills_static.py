@@ -349,3 +349,70 @@ def test_entry_skill_links_the_writing_skills():
     _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
     for name in ["struttura", "intervista-capitolo", "scrittura-capitolo"]:
         assert f"](../{name}/SKILL.md)" in body, name
+
+
+# --- final fix wave (Part 2) ----------------------------------------------------------------
+
+def test_some_skill_closes_the_review():
+    """I2: after the review a skill records the corrected copy and sets the chapters to
+    revisionato, so the flow reaches `fine`."""
+    bodies = {skill.parent.name: " ".join(_split(skill)[1].split()) for skill in SKILLS}
+    assert any("--status revisionato" in body for body in bodies.values())
+    entry = bodies["help-me-write"]
+    for needed in ["Closing the review", 'hmw state record "<work>" "<corrected>"',
+                   'hmw state set "<work>" output="<corrected>"', "--status revisionato",
+                   "rapporto.md", "## Decisioni"]:
+        assert needed in entry, needed
+
+
+def test_skills_record_every_plugin_write():
+    """I3: the fingerprint is recorded right after each write, not only at approval."""
+    entry = _flat_body("help-me-write")
+    assert "Record every write" in entry
+    writing = _flat_body("scrittura-capitolo")
+    assert writing.count('hmw state record "<work>" "<work>/<output>"') >= 3  # write, change, approval
+    assert "right after the write" in writing
+    structure = _flat_body("struttura")
+    assert "right after the write run `hmw state record" in structure  # P5, before approval
+    assert "right after `latex-init`" in structure
+
+
+def test_work_folder_never_climbs_above_the_named_folder():
+    """R-F1: no "use its parent"; the working copy may live inside the named folder."""
+    for name in ["help-me-write", "struttura"]:
+        body = _flat_body(name)
+        assert "use its parent" not in body and "moved to the parent" not in body
+        assert "<project>-help-me-write" in body and "top level" in body
+    assert "never a folder above it" in _flat_body("help-me-write")
+
+
+def test_writing_flow_diff_pdfs_go_to_the_review_folder():
+    """R-F2: the PDFs of differences of the writing flow are written into <rev>."""
+    structure = _flat_body("struttura")
+    assert '-o "<rev>/<base>-v2-differenze.pdf"' in structure
+    assert '-o "<work>/<base>-v2-differenze.pdf"' not in structure
+    assert "`<rev>/<name>-differenze.pdf`" in _flat_body("help-me-write")
+    assert "`<rev>/<name>-differenze.pdf`" in _flat_body("revisione")
+
+
+def test_approved_chapter_changed_only_with_a_new_approval():
+    """S2: the page budget never shortens an approved chapter silently."""
+    for name in ["scrittura-capitolo", "struttura"]:
+        body = _flat_body(name)
+        assert "never changed without a new approval" in body, name
+        assert "--status scritto" in body, name
+
+
+def test_part_1_skills_do_not_stop_for_matplotlib():
+    """R-F3: doctor lists matplotlib as optional; the review never stops for it."""
+    for name in ["revisione", "revisione-bibliografia"]:
+        body = _flat_body(name)
+        assert "optional_missing" in body and "matplotlib" in body, name
+        assert "Needed: every Python package;" not in body and "every Python package is needed" not in body
+
+
+def test_struttura_word_draft_without_copy_revises_the_draft():
+    """I4: with no Word copy yet the first revision reads the draft itself."""
+    structure = _flat_body("struttura")
+    assert "the input is `<work>/<draft>`" in structure
+    assert "track creates the folder" in structure

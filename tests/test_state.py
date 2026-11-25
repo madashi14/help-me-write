@@ -43,6 +43,8 @@ def test_state_round_trip_and_next_step(tmp_path):
     (ALL, DONE, [("01-a", "corpo", "scritto")], "approvazione", "01-a"),
     (ALL, DONE, [("01-a", "corpo", "approvato")], "revisione", None),
     (ALL, DONE, [("01-a", "corpo", "revisionato")], "fine", None),
+    # an approved outline with no chapter goes back to the outline, never to the review
+    (ALL, DONE, [], "struttura", None),
 ])
 def test_next_step_phases(tmp_path, files, fields, chapters, phase, chapter):
     s = _project(tmp_path, files, fields, chapters)

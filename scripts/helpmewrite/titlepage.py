@@ -179,12 +179,13 @@ def run(args) -> int:
         return 2
     try:
         pairs, start_at = _load_values(args.values)
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         result = fill_title_page(Path(args.template), pairs, Path(args.output), start_at)
     except TitlePageError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except (OSError, zipfile.BadZipFile) as exc:
-        print(f"error: cannot fill {args.template}: {exc}", file=sys.stderr)
+        print(f"error: cannot fill {args.template} into {args.output}: {exc}", file=sys.stderr)
         return 2
     result = {"output": str(args.output), **result}
     lines = [f"wrote {args.output} ({result['removed_elements']} elements removed)"]

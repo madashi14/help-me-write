@@ -50,6 +50,14 @@ def test_titlepage_reports_not_found(tmp_path, capsys):
     assert data["replaced"]["Anno Accademico 20…./20…."] == 1
 
 
+def test_titlepage_creates_the_output_folder(tmp_path):
+    """I4: in the Word partial-draft flow <work>/<output>/ may not exist yet."""
+    out = tmp_path / "lavoro" / "bozza-help-me-write" / "bozza-v2.docx"
+    assert main(["titlepage", str(FACSIMILE), "--values", str(write_json(tmp_path, VALUES)),
+                 "-o", str(out)]) == 0
+    assert out.is_file()
+
+
 def test_titlepage_never_overwrites(tmp_path):
     out = tmp_path / "f.docx"
     out.write_bytes(b"x")
