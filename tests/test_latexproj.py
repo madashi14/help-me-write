@@ -121,3 +121,28 @@ def test_latex_project_compiles_and_measures(tmp_path):
         first = pdf.pages[0].extract_text(x_tolerance=1)
     assert "ALMA MATER" in first
     assert not any(line.strip().isdigit() for line in first.splitlines())
+
+
+def test_latex_init_non_a4_paper_uses_explicit_geometry(tmp_path):
+    layout, _ = _layout(tmp_path)
+    layout.paper_cm = (21.59, 27.94)
+    new_latex_project(tmp_path / "us", layout, CHAPTERS, values={"studente": "A\nB"})
+    main = (tmp_path / "us" / "main.tex").read_text(encoding="utf-8")
+    assert r"\usepackage[paperwidth=21.59cm,paperheight=27.94cm,top=" in main
+    assert "a4paper,top" not in main
+    assert r"\newcommand{\studente}{A B}" in main
+    new_latex_project(tmp_path / "a4", layout.__class__(**{**asdict(layout), "paper_cm": (21.0, 29.7)}),
+                      CHAPTERS)
+    assert r"\usepackage[a4paper,top=" in (tmp_path / "a4" / "main.tex").read_text(encoding="utf-8")
+
+
+@needs_xelatex
+def test_latex_generico_title_page_compiles(tmp_path):
+    layout, _ = _layout(tmp_path)
+    out = tmp_path / "gen"
+    new_latex_project(out, layout, CHAPTERS, title_page="generico",
+                      values={"titolo": "Tesi", "autore": "Mario Rossi",
+                              "istituzione": "Ateneo", "data": "2026"})
+    m = measure(out / "main.tex", load_rules(UNIBO), tmp_path / "w")
+    with pdfplumber.open(m.pdf) as pdf:
+        assert "Mario Rossi" in pdf.pages[0].extract_text(x_tolerance=1)

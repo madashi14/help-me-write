@@ -488,6 +488,13 @@ def _main_font(preamble: str):
     return "Computer Modern", None
 
 
+def geometry_paper(layout: Layout) -> str:
+    """geometry paper option: a4paper for A4, else explicit paperwidth/paperheight."""
+    if tuple(layout.paper_cm) == (21, 29.7):
+        return "a4paper"
+    return f"paperwidth={layout.paper_cm[0]:g}cm,paperheight={layout.paper_cm[1]:g}cm"
+
+
 def _layout_block(layout: Layout, preamble: str, size: int) -> str:
     m = layout.margins_cm
     lines = [BLOCK_BEGIN]
@@ -495,10 +502,7 @@ def _layout_block(layout: Layout, preamble: str, size: int) -> str:
         lines.append("\\usepackage{geometry}")
     if layout.line_pitch_pt is not None and not _loads_package(preamble, "setspace"):
         lines.append("\\usepackage{setspace}")
-    if tuple(layout.paper_cm) == (21, 29.7):
-        paper = "a4paper"
-    else:
-        paper = f"paperwidth={layout.paper_cm[0]:g}cm,paperheight={layout.paper_cm[1]:g}cm"
+    paper = geometry_paper(layout)
     lines.append(f"\\geometry{{{paper},top={m['top']:g}cm,bottom={m['bottom']:g}cm,"
                  f"left={m['left']:g}cm,right={m['right']:g}cm}}")
     if layout.line_pitch_pt is not None:

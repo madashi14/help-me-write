@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from .fonts import DOCX_FONT
-from .layout import Layout, LayoutError, load_layout, setstretch_factor
+from .layout import Layout, LayoutError, geometry_paper, load_layout, setstretch_factor
 
 MODELLI = Path(__file__).resolve().parents[2] / "modelli" / "latex"
 
@@ -71,7 +71,7 @@ def _data_block(keys, values) -> str:
             if "_" in key:  # a bare underscore is a TeX error in text
                 body = r"\detokenize{%s}" % body
         else:
-            body = tex_escape(str(value))
+            body = tex_escape(" ".join(str(value).split()))
         lines.append(r"\newcommand{\%s}{%s}" % (_macro(key), body))
     lines.append("% --- FINE DATI ---")
     return "\n".join(lines)
@@ -92,14 +92,13 @@ def _main_tex(layout: Layout, chapters, language, bibliography, data_block) -> s
     fallback = TEX_GYRE.get(layout.family, "TeX Gyre Termes")
     babel = {"it": "italian", "en": "english"}[language]
     m = layout.margins_cm
-    width, height = layout.paper_cm
-    paper = "a4paper" if (round(width), round(height)) == (21, 30) else "a4paper"
+    paper = geometry_paper(layout)
     includes = "\n".join(
         r"\include{capitoli/%02d-%s}" % (i, ch["id"]) for i, ch in enumerate(chapters, 1))
     bib = (r"\bibliographystyle{unsrt}" "\n" r"\bibliography{bibliografia}" "\n"
            if bibliography else "")
     return rf"""% !TeX program = xelatex
-\documentclass[{size}pt,{paper},oneside]{{report}}
+\documentclass[{size}pt,a4paper,oneside]{{report}}
 \usepackage[{babel}]{{babel}}
 \usepackage{{fontspec}}
 \IfFontExistsTF{{{font}}}{{\setmainfont{{{font}}}}}{{\setmainfont{{{fallback}}}}}
