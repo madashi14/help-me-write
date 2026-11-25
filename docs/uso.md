@@ -92,11 +92,15 @@ mai fonti che non ha verificato.
   Zotero) non viene applicata: compare tra le correzioni da fare a mano.
 - Il ciclo di risposte è al massimo di 2 giri, e non è ancora stato provato da uno
   scenario automatico (gli scenari provano la prima revisione).
-- Per LaTeX (e per una bozza in PDF) le sezioni obbligatorie e la loro lunghezza non
-  vengono controllate: il rapporto le segna "non determinabile", da verificare a mano.
+- I titoli delle sezioni si leggono da dove sono più affidabili: dagli stili Titolo di un
+  .docx, da `\chapter`, `\section` e `\subsection` dei sorgenti .tex (seguendo `\input`
+  e `\include`, con indice, elenco delle figure e bibliografia generati da LaTeX) o dai
+  segnalibri di un PDF. Un PDF senza segnalibri non ha titoli leggibili: il rapporto segna
+  le sezioni "non determinabile", da verificare a mano.
 - Un titolo scritto come testo normale (ad esempio in grassetto) invece che con uno stile
-  Titolo viene trovato, ma la lunghezza della sua sezione non si può misurare: il
-  rapporto suggerisce di applicare lo stile.
+  Titolo (o in LaTeX come testo normale invece che con `\chapter` o `\section`, o in un
+  PDF fuori dai segnalibri) viene trovato, ma la lunghezza della sua sezione non si può
+  misurare: il rapporto suggerisce di applicare lo stile.
 - Le righe per pagina si misurano sulle pagine piene, dove un titolo o una didascalia
   contano per le righe che occupano: sono escluse le pagine che finiscono prima o hanno
   una figura senza didascalia, e l'ultima. I caratteri per riga si misurano su ogni pagina

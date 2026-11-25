@@ -120,6 +120,7 @@ class Measurement:
     pages: list[PageStats]
     sections: list[SectionSpan]
     checks: list[Check]
+    headings_source: str = "none"  # "docx", "tex", "pdf-bookmarks" or "none" (headings.py)
 
 
 # --- PDF lines ---------------------------------------------------------------------------
@@ -431,17 +432,15 @@ def section_spans(pages: list[PageStats], headings: list[dict]) -> list[SectionS
 
 
 def measure(doc, rules, workdir) -> Measurement:
-    from .extract import extract
+    from .headings import document_headings
 
     doc = Path(doc)
     pdf = render_pdf(doc, workdir)
     pages = measure_pdf(pdf)
-    sections = None
-    if doc.suffix.lower() == ".docx":
-        headings = [p for p in extract(doc)["paragraphs"] if p["heading_level"] is not None]
-        sections = section_spans(pages, headings)
+    headings, source = document_headings(doc, pdf)
+    sections = section_spans(pages, headings) if headings is not None else None
     return Measurement(str(doc), str(pdf), len(pages), pages, sections or [],
-                       check_rules(pages, sections, rules))
+                       check_rules(pages, sections, rules, source), source)
 
 
 # --- command -----------------------------------------------------------------------------

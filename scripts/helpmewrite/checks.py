@@ -198,13 +198,14 @@ def _unstyled_heading(pages, names):
     return None
 
 
-def _section_checks(spans, section_rules, pages=()) -> list[Check]:
+def _section_checks(spans, section_rules, pages=(), source="docx") -> list[Check]:
     """Sections without headings (title page, body) are identified by position: not checked.
 
-    spans is None when the source has no readable headings (.tex, .pdf): every required
-    section with headings is then reported as not determined (ok=False), to check by hand.
-    A heading typed as plain (bold) text is found by a line of the PDF that is the heading:
-    present, "not styled as a heading", and its length cannot be determined.
+    spans is None when the source has no readable headings (a PDF without bookmarks): every
+    required section with headings is then reported as not determined (ok=False), to check
+    by hand. A heading typed as plain (bold) text is found by a line of the PDF that is the
+    heading: present, not marked as a heading (the wording follows source: "docx", "tex",
+    "pdf-bookmarks"), and its length cannot be determined.
     """
     checks = []
     for rule in section_rules:
@@ -215,17 +216,24 @@ def _section_checks(spans, section_rules, pages=()) -> list[Check]:
         if spans is None:
             if rule.required:
                 checks.append(Check(f"{rid}:present", False,
-                                    "cannot determine sections: headings are read only from .docx "
-                                    f"documents; check by hand for a heading {names}", []))
+                                    "cannot determine sections: this PDF has no bookmarks "
+                                    "(headings are read from .docx, from .tex sources or from "
+                                    f"PDF bookmarks); check by hand for a heading {names}", []))
             continue
         span = next((s for s in spans if _heading_matches(s.title, rule.headings)), None)
         unstyled = _unstyled_heading(pages, rule.headings) if span is None else None
         if unstyled is not None:
             number, line = unstyled
-            checks.append(Check(f"{rid}:present", True,
-                                f"'{line}' found on page {number}, but not styled as a heading "
-                                "(apply a Heading style so that it is in the table of contents)",
-                                [number]))
+            if source == "tex":
+                found = (f"'{line}' found on page {number} as plain text, "
+                         "not as \\chapter or \\section (use a sectioning command so that it is "
+                         "in the table of contents)")
+            elif source == "pdf-bookmarks":
+                found = f"'{line}' found on page {number} as plain text, not among the PDF bookmarks"
+            else:
+                found = (f"'{line}' found on page {number}, but not styled as a heading "
+                         "(apply a Heading style so that it is in the table of contents)")
+            checks.append(Check(f"{rid}:present", True, found, [number]))
             if rule.pages is not None:
                 checks.append(Check(f"{rid}:pages", False,
                                     f"cannot determine the length of '{line}': it is not styled "
@@ -249,8 +257,11 @@ def _section_checks(spans, section_rules, pages=()) -> list[Check]:
     return checks
 
 
-def check_rules(m_pages, sections, rules) -> list[Check]:
-    """One Check per rule present in the guidelines; sections=None means headings unknown."""
+def check_rules(m_pages, sections, rules, headings_source="docx") -> list[Check]:
+    """One Check per rule present in the guidelines; sections=None means headings unknown.
+
+    headings_source ("docx", "tex", "pdf-bookmarks") words the messages about a heading
+    found only as a line of text."""
     checks = []
     if rules.pages is not None:
         n = len(m_pages)
@@ -270,5 +281,5 @@ def check_rules(m_pages, sections, rules) -> list[Check]:
                                 _chars_skip_reason, "pages"))
     if rules.page_numbers:
         checks.append(_page_numbers(m_pages))
-    checks.extend(_section_checks(sections, rules.sections, m_pages))
+    checks.extend(_section_checks(sections, rules.sections, m_pages, headings_source))
     return checks

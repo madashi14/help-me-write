@@ -95,15 +95,14 @@ def test_last_page_is_never_full(tmp_path):
 
 
 @needs_soffice
-def test_measure_pdf_source_cannot_determine_sections(tmp_path):
+def test_measure_pdf_source_reads_sections_from_bookmarks(tmp_path):
     src = _report_with_sections(tmp_path / "relazione.docx", 4, 2)
-    pdf = render_pdf(src, tmp_path / "pdf")
+    pdf = render_pdf(src, tmp_path / "pdf")  # LibreOffice writes a bookmark per heading
     m = measure(pdf, load_rules(UNIBO), tmp_path / "w")
     by = {c.rule: c for c in m.checks}
-    assert m.sections == [] and m.pdf == str(pdf)
-    assert not by["section:introduzione:present"].ok
-    assert "cannot determine sections" in by["section:introduzione:present"].detail
-    assert "section:introduzione:pages" not in by and "section:allegati:present" not in by
+    assert m.headings_source == "pdf-bookmarks" and m.pdf == str(pdf)
+    assert m.sections and by["section:introduzione:present"].ok
+    assert "cannot determine" not in by["section:introduzione:present"].detail
     assert by["font_family"].ok and by["font_size"].ok
 
 
@@ -610,3 +609,47 @@ def test_roman_page_numbers_in_footer_are_found(tmp_path):
     pages = measure_pdf(render_pdf(src, tmp_path / "w"))
     assert len(pages) >= 2 and all(p.has_page_number for p in pages)
     assert "ii" in pages[1].text.splitlines()
+
+
+# --- headings from LaTeX sources and PDF bookmarks -------------------------------------------
+
+@needs_xelatex
+def test_measure_latex_sections(tmp_path):
+    m = measure(write_tex_report(tmp_path / "r"), load_rules(UNIBO), tmp_path / "w")
+    checks = {c.rule: c for c in m.checks}
+    assert m.headings_source == "tex"
+    for rid in ("section:indice:present", "section:introduzione:present",
+                "section:conclusione:present", "section:introduzione:pages"):
+        assert rid in checks and "cannot determine" not in checks[rid].detail
+    assert checks["section:indice:present"].ok
+
+
+@needs_xelatex
+def test_measure_pdf_with_bookmarks(tmp_path):
+    pdf = render_pdf(write_tex_report(tmp_path / "r"), tmp_path / "w")
+    m = measure(pdf, load_rules(UNIBO), tmp_path / "w2")
+    assert m.headings_source == "pdf-bookmarks"
+    by = {c.rule: c for c in m.checks}
+    assert by["section:introduzione:present"].ok and by["section:conclusione:present"].ok
+
+
+@needs_soffice
+def test_measure_pdf_without_bookmarks_message(tmp_path):
+    from fixtures.builders import write_pdf_from_paragraphs
+    pdf = write_pdf_from_paragraphs(tmp_path / "x.pdf", ["a"])
+    m = measure(pdf, load_rules(UNIBO), tmp_path / "w")
+    assert m.headings_source == "none"
+    detail = {c.rule: c for c in m.checks}["section:indice:present"].detail
+    assert ("cannot determine sections: this PDF has no bookmarks (headings are read from .docx, "
+            "from .tex sources or from PDF bookmarks); check by hand for a heading") in detail
+
+
+@pytest.mark.parametrize("source, expected", [
+    ("tex", "'1. Introduzione' found on page 3 as plain text, not as \\chapter or \\section"),
+    ("pdf-bookmarks", "'1. Introduzione' found on page 3 as plain text, not among the PDF bookmarks"),
+    ("docx", "'1. Introduzione' found on page 3, but not styled as a heading")])
+def test_unstyled_heading_message_by_source(source, expected):
+    pages = good_pages()
+    pages[2] = page(3, text="1. Introduzione\nIl tirocinio si è svolto")
+    by = {c.rule: c for c in check_rules(pages, [], load_rules(UNIBO), source)}
+    assert expected in by["section:introduzione:present"].detail
