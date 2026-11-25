@@ -587,3 +587,52 @@ def test_libreoffice_roundtrip_keeps_revisions_and_comments(tmp_path):
         comments = z.read("word/comments.xml").decode("utf-8")
     assert "Indica la fonte di questo dato" in comments and "Accento mancante" in comments
     assert "help-me-write" in comments and "Rivedi questa frase" in comments
+
+
+def test_track_command_never_overwrites_an_existing_copy(tmp_path, capsys):
+    """A copy the user edited by hand (accepted, rejected, typed) survives a second run."""
+    src = write_docx(tmp_path / "bozza.docx", ["Il sistema e stato installato."])
+    edits = _edits_file(tmp_path / "e.json", _raw(0, "e stato", "è stato"))
+    out = tmp_path / "bozza-revisionato.docx"
+    out.write_bytes(b"the user's own work")
+    assert cli.main(["track", str(src), "--edits", str(edits), "-o", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert "already exists" in err and str(tmp_path / "bozza-revisionato-2.docx") in err
+    assert out.read_bytes() == b"the user's own work"
+    assert not (tmp_path / "bozza-revisionato-2.docx").exists()
+
+
+def test_edit_across_a_tutor_comment_reference(tmp_path):
+    """The tutor's commentReference run (no text) inside the match is left in place."""
+    src = xml_docx(tmp_path / "a.docx",
+                   run("Il tirocinio ") + '<w:commentRangeStart w:id="5"/>' + run("si è svolto")
+                   + '<w:commentRangeEnd w:id="5"/>'
+                   + '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>'
+                     '<w:commentReference w:id="5"/></w:r>'
+                   + run(" pressso Alfa."))
+    out = tmp_path / "b.docx"
+    r = apply_edits_docx(src, S(E(0, "svolto pressso", "svolto presso")), out)
+    assert r.applied == [0] and r.failed == []
+    p = paragraphs(out)[0]
+    assert visible_text(p) == "Il tirocinio si è svolto presso Alfa."
+    assert rejected_text(p) == "Il tirocinio si è svolto pressso Alfa."
+    assert len(X(p, ".//w:commentReference[@w:id='5']")) == 1
+    assert X(p, "./w:commentRangeStart[@w:id='5']") and X(p, "./w:commentRangeEnd[@w:id='5']")
+
+
+def test_comment_without_private_python_docx_element(tmp_path, monkeypatch):
+    """Another python-docx version without Comment._comment_elm: the default date is kept."""
+    real = docx.document.Document.add_comment
+
+    class Public:
+        def __init__(self, comment):
+            self.comment_id = comment.comment_id
+
+    monkeypatch.setattr(docx.document.Document, "add_comment",
+                        lambda self, *a, **k: Public(real(self, *a, **k)))
+    src = write_docx(tmp_path / "a.docx", ["Il fatturato è cresciuto del 40%."])
+    out = tmp_path / "b.docx"
+    r = apply_edits_docx(src, S(E(0, "del 40%", None, "Fonte?")), out, date=DATE)
+    assert r.applied == [0] and r.failed == []
+    comment = next(iter(Document(out).comments))
+    assert comment.text == "Fonte?" and comment.author == "help-me-write"

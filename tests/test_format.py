@@ -352,3 +352,50 @@ def test_picture_paragraph_gets_auto_line_spacing(tmp_path):
     assert spacing.get(f"{{{W}}}line") == "240" and spacing.get(f"{{{W}}}lineRule") == "auto"
     plain = next(p for p in out.paragraphs if p.text == "dopo")
     assert plain._p.find(f"{{{W}}}pPr/{{{W}}}spacing") is None
+
+
+def test_format_command_never_overwrites_an_existing_copy(tmp_path, capsys):
+    src = write_docx(tmp_path / "bozza-revisionato.docx", ["x"])
+    out = tmp_path / "bozza-revisionato-formattato.docx"
+    out.write_bytes(b"edited by hand")
+    code = cli.main(["format", str(src), "--layout", str(_layout_file(tmp_path)), "-o", str(out)])
+    assert code == 2 and out.read_bytes() == b"edited by hand"
+    err = capsys.readouterr().err
+    assert "already exists" in err and "bozza-revisionato-formattato-2.docx" in err
+
+
+def test_even_page_footer_text_kept_in_later_sections(tmp_path):
+    src = _multi_section_doc(tmp_path / "in.docx", even=True)
+    d = Document(src)
+    d.sections[0].even_page_footer.is_linked_to_previous = False
+    d.sections[0].even_page_footer.paragraphs[0].text = "Mario Rossi - Relazione (pari)"
+    d.save(src)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    even = out.sections[0].even_page_footer
+    assert "Mario Rossi - Relazione (pari)" in even._element.xml and "PAGE" in even._element.xml
+    for section in out.sections[1:]:  # inherit the first section's even footer, text included
+        assert section.even_page_footer.is_linked_to_previous
+
+
+def _first_page_break_after(path, n):
+    """n paragraphs with direct 20 pt Arial runs, a page break, then one more paragraph."""
+    d = Document()
+    for i in range(n):
+        r = d.add_paragraph().add_run(f"Riga {i}")
+        r.font.name, r.font.size = "Arial", Pt(20)
+    d.add_page_break()
+    d.add_paragraph().add_run("corpo").font.size = Pt(20)
+    d.save(path)
+    return path
+
+
+@pytest.mark.parametrize("before_break, kept", [(10, True), (20, False)])
+def test_title_page_window_is_15_paragraphs(tmp_path, before_break, kept):
+    """Direct formatting before the first page break is a title page only within 15
+    paragraphs (ruling R3): a first chapter of 20 paragraphs is body text."""
+    src = _first_page_break_after(tmp_path / "in.docx", before_break)
+    apply_layout(src, unibo_layout(), tmp_path / "out.docx")
+    out = Document(tmp_path / "out.docx")
+    assert (out.paragraphs[0].runs[0].font.size == Pt(20)) is kept
+    assert out.paragraphs[-1].runs[0].font.size is None

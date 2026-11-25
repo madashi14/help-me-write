@@ -215,3 +215,22 @@ def test_extract_with_stray_byte_is_printable_and_edit_still_applies(project, tm
         edit("errorre", "errore", file="cap.tex", line=entries[0]["line"])]), tmp_path / "o")
     assert (tmp_path / "o" / "cap.tex").read_bytes() == \
         "città ".encode("utf-8") + b"\xe9 errore fine\n"
+
+
+def test_texdiff_and_track_never_overwrite(project, tmp_path, capsys):
+    from helpmewrite import cli
+    out_pdf = tmp_path / "Tesi-differenze.pdf"
+    out_pdf.write_bytes(b"%PDF earlier differences")
+    assert cli.main(["texdiff", str(project / "main.tex"), str(project / "main.tex"),
+                     "-o", str(out_pdf)]) == 2
+    err = capsys.readouterr().err
+    assert "already exists" in err and str(tmp_path / "Tesi-differenze-2.pdf") in err
+    assert out_pdf.read_bytes() == b"%PDF earlier differences"
+    ed = tmp_path / "e.json"
+    dump_edits(EditSet("a", [edit("errorre", "errore")]), ed)
+    done = tmp_path / "Tesi-revisionato"
+    done.mkdir()
+    (done / "main.tex").write_text("edited by hand")
+    assert cli.main(["track", str(project / "main.tex"), "--edits", str(ed), "-o", str(done)]) == 2
+    assert str(tmp_path / "Tesi-revisionato-2") in capsys.readouterr().err
+    assert (done / "main.tex").read_text() == "edited by hand"

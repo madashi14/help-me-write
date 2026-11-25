@@ -157,7 +157,7 @@ def _set_exact_spacing(style, pitch_pt):
     spacing.set(_q("lineRule"), "exact")
 
 
-TITLE_PAGE_MAX_PARAGRAPHS = 40
+TITLE_PAGE_MAX_PARAGRAPHS = 15  # a title page has a few lines (ruling R3)
 _PROTECTED_STYLE_RE = re.compile(r"^(title|subtitle|titolo|sottotitolo)$", re.IGNORECASE)
 
 
@@ -175,7 +175,8 @@ def _title_page_paragraphs(body) -> set:
 
     Paragraphs in text boxes (w:txbxContent, and the paragraphs hosting them), plus every
     body paragraph before the first explicit page break (w:br type=page, pageBreakBefore) or
-    section break (pPr/sectPr), if that break occurs within the first 40 paragraphs.
+    section break (pPr/sectPr), if that break occurs within the first
+    TITLE_PAGE_MAX_PARAGRAPHS (15) paragraphs.
     """
     paragraphs = [p for p in body.iter(_q("p")) if not _in_textbox(p)]
     protected = {p for p in body.iter(_q("p")) if _in_textbox(p) or p.find(".//" + _q("txbxContent")) is not None}
@@ -286,7 +287,11 @@ def _has_page_field(footer) -> bool:
 
 
 def _chain_reaches_first(document, index, attr) -> bool:
-    """True if section index's footer of this kind is linked all the way back to section 0."""
+    """True if section index's footer of this kind is linked all the way back to section 0.
+
+    Only used for first_page_footer: the first section's one is the title page's and stays
+    unnumbered, so a later section must not inherit it.
+    """
     sections = document.sections
     for k in range(index, 0, -1):
         if not getattr(sections[k], attr).is_linked_to_previous:
@@ -297,8 +302,9 @@ def _chain_reaches_first(document, index, attr) -> bool:
 def _number_footers(document) -> int:
     """Give each page kind of each section a PAGE field; return how many footers changed.
 
-    Linked footers stay linked (they inherit). The first-page footer of the first section
-    (the title page) is left unnumbered.
+    Linked footers stay linked (they inherit, text included). The first-page footer of the
+    first section (the title page) is left unnumbered, so a later section's first-page
+    footer linked back to it gets its own; even-page footers stay linked like the others.
     """
     sections = document.sections
     even_odd = document.settings.odd_and_even_pages_header_footer
@@ -314,7 +320,8 @@ def _number_footers(document) -> int:
                 continue
             footer = getattr(section, attr)
             if footer.is_linked_to_previous:
-                if i > 0 and not (attr != "footer" and _chain_reaches_first(document, i, attr)):
+                if i > 0 and not (attr == "first_page_footer"
+                                  and _chain_reaches_first(document, i, attr)):
                     continue
                 footer.is_linked_to_previous = False
             if _has_page_field(footer):
@@ -343,8 +350,10 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
     import docx
     from docx.shared import Cm, Pt
 
+    from .cli import same_file
+
     src, dst = Path(src), Path(dst)
-    if src.resolve() == dst.resolve():
+    if same_file(src, dst):
         raise ValueError(f"destination would overwrite the original: {src}")
     document = docx.Document(str(src))
     changes = []
@@ -439,6 +448,8 @@ def run_format(args) -> int:
     from . import cli
 
     if cli.refuses_overwrite(args.input, args):
+        return 2
+    if cli.refuses_existing_output(args.output):
         return 2
     try:
         layout = load_layout(args.layout)

@@ -216,11 +216,14 @@ def run_track(args) -> int:
         return _error(f"file not found: {source}")
     if cli.refuses_overwrite(source, args):
         return 2
-    if any(Path(e).resolve() == output.resolve() for e in args.edits):
+    if any(cli.same_file(e, output) for e in args.edits):
         return _error(f"output would overwrite an edits file: {output}")
     suffix = source.suffix.lower()
     if suffix not in (".docx", ".tex"):
         return _error(f"unsupported format '{source.suffix}' for track (use .docx or .tex)")
+    # a copy the user may have edited by hand is never replaced (.tex: an empty folder is ok)
+    if cli.refuses_existing_output(output, folder_ok_if_empty=suffix == ".tex"):
+        return 2
     sets, invalid = [], False
     for path in args.edits:
         try:

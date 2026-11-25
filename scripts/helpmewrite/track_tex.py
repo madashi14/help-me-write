@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from .cli import same_file
 from .edits import EditsError, EditSet
 from .extract import read_tex_text, split_tex_lines
 from .render import RenderError, render_pdf
@@ -149,7 +150,7 @@ def texdiff(old_main: Path, new_main: Path, out_pdf: Path) -> Path:
     for main in (old_main, new_main):
         if not main.is_file():
             raise RenderError(f"file not found: {main}")
-    if out_pdf.resolve() in (old_main.resolve(), new_main.resolve()):
+    if any(same_file(out_pdf, main) for main in (old_main, new_main)):
         raise RenderError(f"output would overwrite the original: {out_pdf}")
     latexdiff = shutil.which("latexdiff")
     if latexdiff is None:
@@ -195,6 +196,10 @@ def add_texdiff_arguments(parser):
 def run_texdiff(args) -> int:
     import sys
 
+    from . import cli
+
+    if cli.refuses_existing_output(args.output, (args.old_main, args.new_main)):
+        return 2
     try:
         pdf = texdiff(Path(args.old_main), Path(args.new_main), Path(args.output))
     except RenderError as exc:

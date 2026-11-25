@@ -98,8 +98,10 @@ def apply_edits_docx(src: Path, edits: EditSet, dst: Path,
     """
     import docx
 
+    from .cli import same_file
+
     src, dst = Path(src), Path(dst)
-    if dst.resolve() == src.resolve():
+    if same_file(src, dst):
         raise ValueError(f"output would overwrite the original: {src}")
     document = docx.Document(str(src))
     paragraphs = iter_body_paragraphs(document)
@@ -162,7 +164,9 @@ def _apply_edit(p, span, edit, ctx, ours) -> _Anchor:
     runs = _text_runs(p)
     if "".join(text for _, _, text in runs) != visible_text(p):
         raise _Refused("unsupported content")
-    touched = [(r, off, text) for r, off, text in runs if off < end and off + len(text) > start]
+    # textless runs (a tutor's comment reference) are not matched: _check_span vets them
+    touched = [(r, off, text) for r, off, text in runs
+               if text and off < end and off + len(text) > start]
     in_field = _field_runs(p, ctx.field_depth.get(p, 0))
     for r, _, _ in touched:
         _check_matched_run(r, p, in_field)
@@ -390,7 +394,14 @@ def _add_comment(ctx, anchor, text):
     comment = ctx.document.add_comment(
         [Run(anchor.first_run, ctx.document), Run(anchor.last_run, ctx.document)],
         text=text, author=ctx.author, initials=INITIALS)
-    comment._comment_elm.date = ctx.when  # python-docx 1.2 has no public date setter
+    # python-docx 1.2 has no public date setter; without the private element (another
+    # version) the comment keeps python-docx's own date
+    element = getattr(comment, "_comment_elm", None)
+    if element is not None:
+        try:
+            element.date = ctx.when
+        except Exception:
+            pass
     cid = str(comment.comment_id)
 
     def marker(tag):
