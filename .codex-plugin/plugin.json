@@ -34,6 +34,7 @@
       "Review my paper draft"
     ],
     "screenshots": [],
-    "websiteURL": "https://github.com/madashi14/help-me-write"
+    "websiteURL": "https://github.com/madashi14/help-me-write",
+    "logo": "./assets/icon.png"
   }
 }

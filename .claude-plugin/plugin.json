@@ -8,6 +8,7 @@
   "homepage": "https://github.com/madashi14/help-me-write",
   "repository": "https://github.com/madashi14/help-me-write",
   "license": "MIT",
+  "icon": "./assets/icon.png",
   "keywords": [
     "writing",
     "review",
