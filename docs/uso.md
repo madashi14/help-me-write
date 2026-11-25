@@ -1,4 +1,80 @@
-# Guida d'uso (Parte 1: revisione)
+# Guida d'uso
+
+Il plugin ha due usi: **scrivere** un documento a partire da una cartella di lavoro (Parte 2,
+sotto) e **rivedere** una bozza finita (Parte 1, dopo "Prima di cominciare").
+
+## Scrivere un documento (help-me-write)
+
+Apri l'assistente nella cartella del lavoro e scrivi, ad esempio, "Aiutami a scrivere la
+relazione", "Completa la bozza" o "Riprendi la relazione". Nella cartella possono stare
+appunti, dati, script, progetti git, notebook, archivi e una bozza: il plugin li legge
+senza mai eseguirli, e non modifica mai i tuoi file.
+
+### Le tre modalità
+
+| Modalità | Quando | Cosa fa |
+|---|---|---|
+| `da-zero` | non c'è una bozza | propone la scaletta, il frontespizio, poi un capitolo alla volta |
+| `bozza-parziale` | c'è una bozza con parti vuote, sezioni mancanti o troppo breve | confronta la bozza con le linee guida, propone il piano di riorganizzazione, fa una **copia di lavoro** con l'impaginazione corretta, compila il frontespizio, propone i tagli per rientrare nelle pagine, poi scrive le parti mancanti |
+| `solo-revisione` | la bozza è completa | passa alla revisione (Parte 1) |
+
+L'assistente propone la modalità e la conferma è tua. In `da-zero` ti chiede sempre
+"LaTeX o Word?": è una scelta tua, qualunque sia il materiale.
+
+### Un capitolo alla volta
+
+Per ogni capitolo: intervista (ciò che solo tu sai: cosa è importante, il tuo contributo,
+le difficoltà, i risultati con i numeri, cosa non si può pubblicare), stesura, tua
+approvazione, poi il successivo. Scaletta e frontespizio vanno approvati prima. Alla fine
+c'è la revisione del documento completo. Nulla è inventato: ogni fatto e ogni numero viene
+da un file del materiale o da una tua risposta; ciò che manca resta
+`[DA VERIFICARE: ...]` nel testo, da completare.
+
+### Riprendere
+
+Puoi fermarti quando vuoi. "Continua" o "riprendi la relazione" nella stessa cartella
+riparte dallo stato salvato: l'assistente riassume modalità, formato e stato di ogni
+capitolo, poi continua dal passo successivo senza richiederti ciò che ha già in
+`.help-me-write/`. Se hai modificato a mano un file prodotto, l'assistente se ne accorge e
+non lo rigenera: ogni cambiamento successivo passa da una copia con revisioni tracciate.
+La cartella può passare da un computer all'altro e tra Claude Code e Codex, perché lo
+stato contiene solo percorsi relativi.
+
+### Word o LaTeX
+
+| | Word | LaTeX |
+|---|---|---|
+| Uscita | `<nome>-help-me-write/<nome>.docx` | progetto in `<nome>-help-me-write/` (`main.tex`, `capitoli/`, `immagini/`) |
+| Serve | LibreOffice (misura e conversione) | `latexmk` e XeLaTeX (o LuaLaTeX); `latexdiff` per le differenze |
+| Bozza parziale | i tagli sono revisioni tracciate in un nuovo `.docx` | la copia di lavoro `<progetto>-help-me-write/` accanto al progetto; i tagli sono modifiche con un PDF delle differenze |
+
+Il formato di una bozza parziale si ricava dalla bozza (`.docx` o `.tex`).
+
+### Figure
+
+Tre tipi di figura, nessun altro: grafici disegnati dai tuoi file di dati (CSV, JSON; i
+valori sono tracciati in un file `.fonte.json`), schemi a blocchi disegnati da ciò che
+descrivi, immagini che hai già. Ogni figura ha numero, didascalia e un riferimento nel
+testo. Il plugin non crea mai immagini fotografiche o artistiche e non usa servizi di
+immagini generate. Grafici e schemi richiedono `matplotlib` (vedi `README.md`).
+
+### La cartella `.help-me-write/`
+
+Dentro la cartella del lavoro, contiene lo stato e i file di lavoro; puoi leggerla, e
+cancellarla per ricominciare:
+
+| File | Contenuto |
+|---|---|
+| `progetto.md` | stato: modalità, formato, uscita, capitoli con il loro stato (`da-fare`, `intervista-fatta`, `scritto`, `approvato`, `revisionato`); nel testo `## Decisioni` e `## Domande aperte` |
+| `linee-guida.yaml` | regole lette dalle linee guida |
+| `materiale.md` | sintesi, mappa del materiale, cronologia, dati e numeri, note dell'autore, cosa non è stato letto, lacune |
+| `layout.json` | margini, interlinea e righe/caratteri per pagina calcolati dalle regole |
+| `indice.md`, `indice.json` | scaletta approvata |
+| `capitoli/`, `manifest.yaml` | sorgenti dei capitoli e manifesto (Word) |
+| `revisioni/<data-ora>/` | rapporti di revisione e proposte di tagli (`tagli.md`) |
+| `misure/`, `pdf/` | misure e PDF di prova |
+
+I percorsi scritti nello stato sono relativi alla cartella del lavoro.
 
 ## Prima di cominciare
 
@@ -14,7 +90,7 @@
    stare nella stessa cartella o in sue sottocartelle. Aggiungi le linee guida
    (facsimile, regolamento) se le hai.
 
-## Come chiedere una revisione
+## Come chiedere una revisione (Parte 1)
 
 Apri l'assistente nella cartella del lavoro e scrivi, ad esempio:
 
@@ -105,11 +181,21 @@ mai fonti che non ha verificato.
   contano per le righe che occupano: sono escluse le pagine che finiscono prima o hanno
   una figura senza didascalia, e l'ultima. I caratteri per riga si misurano su ogni pagina
   con almeno 5 righe piene di prosa, se non sono meno delle altre sue righe piene (voci
-  dell'indice, righe di una tabella).
+  dell'indice, righe di una tabella); l'indice e la bibliografia sono saltati.
   Il frontespizio è sempre escluso, e il rapporto dice quali pagine non ha valutato e
   perché.
 - Il supporto Codex non è ancora verificato su un'installazione reale
-  (`tests/scenari/codex.md`).
+  (`tests/scenari/codex.md`): resta da verificare, anche per la Parte 2.
 - Word non è stato provato direttamente: sono stati verificati il passaggio da
   LibreOffice e la validità OOXML dei file.
-- La Parte 2 (scrittura guidata da una cartella di lavoro) non è ancora disponibile.
+- Nei documenti Word le formule sono scritte come testo semplice, non come equazioni di Word.
+- Il frontespizio di un modello Word ha la sua intestazione, che non compare nelle pagine di
+  testo (`titlePg`): l'intestazione del facsimile porta un numero di pagina, quindi le
+  pagine di testo hanno l'intestazione vuota.
+- In una bozza Word parziale il comando di revisione sostituisce testo dentro i paragrafi
+  ma non inserisce capitoli: i capitoli nuovi arrivano in un documento a parte,
+  `<nome>-capitoli-nuovi.docx`, da incollare nel tuo.
+- Gli scenari `da-zero-word` e `ripresa` sono scritti ma non ancora eseguiti; della Parte
+  2 la prova su una bozza LaTeX reale è `tests/scenari/bozza-parziale.md`.
+- `material` legge anche i repository git annidati nella cartella (`git_repos`) e ne
+  riassume la storia; senza `git` la storia viene omessa.

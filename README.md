@@ -1,8 +1,10 @@
 # help-me-write
 
-Plugin per Claude Code e OpenAI Codex che rivede e aiuta a scrivere documenti formali
-(relazioni di tirocinio, articoli): controlla linee guida, impaginazione e bibliografia e
-propone le correzioni come revisioni tracciate, senza mai modificare l'originale.
+Plugin per Claude Code e OpenAI Codex che aiuta a scrivere e rivede documenti formali
+(relazioni di tirocinio, articoli). **Scrive** a partire da una cartella di lavoro (appunti,
+dati, script, git, bozza) un capitolo alla volta, in Word o LaTeX, senza inventare nulla;
+**rivede** una bozza finita controllando linee guida, impaginazione e bibliografia e
+propone le correzioni come revisioni tracciate. Non modifica mai i tuoi file originali.
 
 ## Requisiti
 
@@ -19,6 +21,8 @@ propone le correzioni come revisioni tracciate, senza mai modificare l'originale
   - Su Python di sistema Debian/Ubuntu, `bibtexparser` può richiedere
     `python -m pip install --use-pep517 "bibtexparser>=1.4,<2"`.
   - Da un clone del repository basta `python -m pip install -r requirements.txt`.
+- `matplotlib` (nelle dipendenze sopra) serve solo ai grafici e agli schemi delle figure
+  (`chart`, `diagram`); il resto funziona senza.
 - Opzionali: LibreOffice (conversione in PDF e misura dell'impaginazione), `latexmk` e
   `latexdiff` (documenti LaTeX). Si installano da https://www.libreoffice.org/download/ e
   https://tug.org/texlive/. Per i progetti con `fontspec` o `polyglossia` serve anche
@@ -72,7 +76,7 @@ automatiche (headless) servono `--allowedTools "Bash(python:*) Bash(python3:*)"`
 comando viene eseguito da solo, non concatenato con `&&` o `;`, perché le liste di
 permessi restrittive rifiutano i comandi concatenati.
 
-## Cosa fa la Parte 1
+## Cosa fa: revisione
 
 Si usa chiedendo all'assistente, in italiano o nella tua lingua, ad esempio "Rivedi
 bozza.docx".
@@ -92,16 +96,30 @@ bozza.docx".
 
 Guida d'uso e limiti noti: `docs/uso.md`.
 
-## Cosa arriverà con la Parte 2
+## Cosa fa: scrittura
 
-Il flusso di scrittura a partire da una cartella di lavoro: analisi del materiale, scelta
-tra LaTeX e Word, scaletta e frontespizio, interviste capitolo per capitolo, stesura e
-figure. Non è ancora disponibile.
+Si usa chiedendo "Aiutami a scrivere la relazione", "Completa la bozza" o "Riprendi la
+relazione" nella cartella del lavoro.
+
+- `help-me-write`: riconosce la situazione (`da-zero`, `bozza-parziale`, bozza completa),
+  tiene lo stato in `.help-me-write/progetto.md` e riprende da dove si era fermato.
+- `analisi-materiale`: legge cartella, git, archivi e notebook (senza eseguirli) e scrive
+  `.help-me-write/materiale.md`.
+- `struttura`: scaletta e frontespizio; per una bozza, confronto con le linee guida, copia
+  di lavoro con l'impaginazione corretta e proposta di tagli per rientrare nelle pagine.
+- `intervista-capitolo` e `scrittura-capitolo`: un capitolo alla volta, intervista, stesura
+  e approvazione, in Word o LaTeX; nulla è inventato, ciò che manca resta
+  `[DA VERIFICARE: ...]`.
+- `figure`: grafici dai tuoi file di dati, schemi a blocchi e immagini tue, con numero,
+  didascalia e riferimento nel testo.
+
+Guida d'uso e limiti noti: `docs/uso.md`.
 
 ## Comandi
 
 `python <cartella del plugin>/scripts/hmw.py <comando>`: `doctor`, `extract`, `rules`,
-`layout`, `format`, `measure`, `track`, `texdiff`, `bib`, `pdftext`. Con `--json` l'output
+`layout`, `format`, `measure`, `track`, `texdiff`, `bib`, `pdftext`, `detect`, `material`,
+`notebook`, `state`, `titlepage`, `latex-init`, `assemble`, `chart`, `diagram`. Con `--json` l'output
 è JSON. Exit code: 0 ok; 1 controlli non superati (`measure`), correzioni non applicate
 (`track`) o sostituzioni non trovate (`titlepage`); 2 errore d'uso o file non valido (anche: file di uscita già esistente, che non
 viene mai sovrascritto); 3 strumento esterno o pacchetto Python mancante.
