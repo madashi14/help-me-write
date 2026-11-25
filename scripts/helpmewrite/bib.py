@@ -200,6 +200,9 @@ def _bibtex_entries(path: Path) -> list[BibEntry]:
     return entries
 
 
+bibtex_entries = _bibtex_entries  # public name (assemble reads a .bib with it)
+
+
 # --------------------------------------------------------- citation scanning
 
 _DASH = "–—-"

@@ -24,6 +24,8 @@ PACKAGES = {"docx": "python-docx", "lxml": "lxml", "pdfplumber": "pdfplumber",
 # name -> (module, add_arguments, handler, json_output, packages needed)
 # json_output=False: -o belongs to the command (the document it produces), not to JSON.
 _COMMANDS = {
+    "assemble": ("assemble", "add_arguments", "run", False,
+                 ("lxml", "docx", "yaml", "bibtexparser")),
     "bib": ("bib", "add_bib_arguments", "run_bib", True,
             ("lxml", "docx", "pdfplumber", "bibtexparser")),
     "chart": ("figure", "add_chart_arguments", "run_chart", False, ("matplotlib",)),
