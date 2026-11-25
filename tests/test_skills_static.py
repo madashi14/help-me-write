@@ -48,7 +48,8 @@ def relative_paths(body: str) -> list[str]:
 
 
 def test_expected_skills_and_profiles_exist():
-    for name in ["linee-guida", "revisione", "revisione-bibliografia"]:
+    for name in ["linee-guida", "revisione", "revisione-bibliografia", "help-me-write",
+                 "analisi-materiale"]:
         assert (ROOT / "skills" / name / "SKILL.md") in SKILLS
     assert {p.stem for p in PROFILES} >= {"relazione-tirocinio", "generico"}
 
@@ -277,3 +278,33 @@ def test_bib_prompt_unique_source_names():
     text = (ROOT / "skills" / "revisione-bibliografia"
             / "prompt-revisore-bibliografia.md").read_text(encoding="utf-8")
     assert "replaced by __" in text
+
+
+# --- entry skill and material analysis (Part 2, Task 11) --------------------------------
+
+def test_skills_use_known_commands():
+    """Every `hmw <command>` cited in a SKILL.md or a prompt exists in cli._COMMANDS."""
+    from helpmewrite import cli
+
+    for document in SKILLS + PROMPTS:
+        for line in command_lines(document.read_text(encoding="utf-8")):
+            command = hmw_arguments(line)[0]
+            assert command in cli._COMMANDS, f"{document.parent.name}: `{line}`"
+
+
+def test_entry_skill_rules():
+    _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
+    flat = " ".join(body.split())
+    for needed in ["LaTeX or Word", "never ask again", "state modified", "[DA VERIFICARE"]:
+        assert needed in flat, needed
+
+
+def test_material_skill_and_template():
+    folder = ROOT / "skills" / "analisi-materiale"
+    _, body = _split(folder / "SKILL.md")
+    assert "](modello-materiale.md)" in body
+    template = (folder / "modello-materiale.md").read_text(encoding="utf-8")
+    block = re.search(r"^```markdown\n(.*?)^```", template, re.S | re.M).group(1)
+    headings = [line[3:] for line in block.splitlines() if line.startswith("## ")]
+    assert headings == ["Sintesi del lavoro", "Mappa del materiale", "Cronologia",
+                        "Dati e numeri", "Note dell'autore", "Non letto", "Lacune e domande"]
