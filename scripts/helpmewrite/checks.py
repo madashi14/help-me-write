@@ -77,7 +77,8 @@ def _skip_reason(p, last, value) -> str | None:
             return "no body text"
         if p.number == last:
             return "last page"
-        return "not a full page: the text ends early or a figure or table interrupts it"
+        return ("not a full page: the text starts late or ends early, or a heading, figure "
+                "or table takes some of its lines")
     if value(p) is None:
         return "no full-width lines"
     return None
@@ -163,11 +164,33 @@ def _heading_matches(title: str, names) -> bool:
     return any(re.match(re.escape(normalize_text(n)) + r"(?!\w)", key) for n in names)
 
 
-def _section_checks(spans, section_rules) -> list[Check]:
+_UNSTYLED_EXTRA_WORDS = 4
+
+
+def _unstyled_heading(pages, names):
+    """(page number, line) of a line of the PDF that is one of the heading names, optionally
+    numbered ("1. Introduzione") and followed by a few words ("Conclusioni e sviluppi
+    futuri"), but not a table-of-contents entry ("Introduzione 3") nor the end of a sentence.
+    Pages after the first come first, as in measure._locate."""
+    wanted = [normalize_text(n) for n in names]
+    for p in sorted(pages, key=lambda p: (p.number == 1, p.number)):
+        for line in p.text.splitlines():
+            key = heading_key(line)
+            for name in wanted:
+                extra = len(key.split()) - len(name.split())
+                if key == name or (key.startswith(name + " ") and extra <= _UNSTYLED_EXTRA_WORDS
+                                   and not re.search(r"[\d.,;:]$", key)):
+                    return p.number, " ".join(line.split())
+    return None
+
+
+def _section_checks(spans, section_rules, pages=()) -> list[Check]:
     """Sections without headings (title page, body) are identified by position: not checked.
 
     spans is None when the source has no readable headings (.tex, .pdf): every required
     section with headings is then reported as not determined (ok=False), to check by hand.
+    A heading typed as plain (bold) text is found by a line of the PDF that is the heading:
+    present, "not styled as a heading", and its length cannot be determined.
     """
     checks = []
     for rule in section_rules:
@@ -182,6 +205,18 @@ def _section_checks(spans, section_rules) -> list[Check]:
                                     f"documents; check by hand for a heading {names}", []))
             continue
         span = next((s for s in spans if _heading_matches(s.title, rule.headings)), None)
+        unstyled = _unstyled_heading(pages, rule.headings) if span is None else None
+        if unstyled is not None:
+            number, line = unstyled
+            checks.append(Check(f"{rid}:present", True,
+                                f"'{line}' found on page {number}, but not styled as a heading "
+                                "(apply a Heading style so that it is in the table of contents)",
+                                [number]))
+            if rule.pages is not None:
+                checks.append(Check(f"{rid}:pages", False,
+                                    f"cannot determine the length of '{line}': it is not styled "
+                                    f"as a heading ({_allowed(rule.pages)} pages)", [number]))
+            continue
         if span is None:
             kind = "required" if rule.required else "optional"
             checks.append(Check(f"{rid}:present", not rule.required,
@@ -219,5 +254,5 @@ def check_rules(m_pages, sections, rules) -> list[Check]:
                                 lambda p: p.chars_per_full_line, "chars per full line"))
     if rules.page_numbers:
         checks.append(_page_numbers(m_pages))
-    checks.extend(_section_checks(sections, rules.sections))
+    checks.extend(_section_checks(sections, rules.sections, m_pages))
     return checks

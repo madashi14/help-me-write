@@ -353,3 +353,148 @@ def test_measure_leaves_existing_pdf_in_workdir(tmp_path):
                      "-o", str(tmp_path / "m.json")]) == 1
     assert own.read_bytes() == b"%PDF-1.4 the student's own export"
     assert json.loads((tmp_path / "m.json").read_text(encoding="utf-8"))["pdf"] != str(own)
+
+
+# --- full pages: line slots (final review, finding 8) ------------------------------------
+
+def _line(top, height=12.0):
+    from collections import Counter
+
+    from helpmewrite.measure import _Line
+    return _Line("testo", top, top + height, 70.0, 520.0, Counter({12.0: 5}), Counter())
+
+
+def test_missing_slots_figure_at_top_and_heading_inside():
+    from helpmewrite.measure import missing_slots
+
+    pitch, top = 21.1, 78.3
+    full = [_line(top + i * pitch) for i in range(33)]
+    heading_at_top = [_line(top + (i + 1) * pitch) for i in range(32)]
+    figure_at_top = [_line(top + (i + 7) * pitch) for i in range(26)]
+    heading_inside = ([_line(top + i * pitch) for i in range(15)]
+                      + [_line(top + (i + 17) * pitch) for i in range(13)])
+    assert missing_slots(full, top, pitch, pitch) == 0
+    assert missing_slots(heading_at_top, top, pitch, pitch) == 1
+    assert missing_slots(figure_at_top, top, pitch, pitch) == 7
+    assert missing_slots(heading_inside, top, pitch, pitch) == 2
+    # with paragraph spacing (pitch 14, 10 pt after each paragraph of 4 lines): none missing
+    spaced, y = [], top
+    for i in range(40):
+        spaced.append(_line(y, 11.0))
+        y += 14.0 + (10.0 if i % 4 == 3 else 0.0)
+    assert missing_slots(spaced, top, 14.0, 24.0) == 0
+
+
+def _one_liners(n, start=0):
+    return [f"Riga di prova numero {i}." for i in range(start, start + n)]
+
+
+@needs_soffice
+def test_figure_at_top_and_heading_with_early_end_are_not_full(tmp_path):
+    """The plugin's own formatted copy (finding 8): a page with a heading that ends early
+    because the next figure does not fit (28 body lines), then a page that starts with that
+    figure (26 body lines). They have fewer lines by design: lines_per_page (30-35) must
+    not fail on them."""
+    from docx.shared import Cm
+
+    png = write_png(tmp_path / "fig.png", 400, 170)
+    d = docx.Document()
+    d.add_paragraph("Relazione", style="Title")
+    for text in italian_paragraphs(12):
+        p = d.add_paragraph(text)
+        if len(d.paragraphs) == 2:
+            p.paragraph_format.page_break_before = True
+    for i, text in enumerate(_one_liners(12)):
+        p = d.add_paragraph(text)
+        p.paragraph_format.page_break_before = i == 0
+    d.add_paragraph("Analisi", style="Heading 1")
+    for text in _one_liners(16, 12):
+        d.add_paragraph(text)
+    d.add_paragraph().add_run().add_picture(str(png), width=Cm(12))  # 3 slots left: too tall
+    for text in _one_liners(26, 28) + italian_paragraphs(12):
+        d.add_paragraph(text)
+    raw = tmp_path / "raw.docx"
+    d.save(str(raw))
+    rules = load_rules(UNIBO)
+    out = tmp_path / "formattato.docx"
+    apply_layout(raw, compute_layout(rules, "Times New Roman"), out)
+    m = measure(out, rules, tmp_path / "w")
+    by = {c.rule: c for c in m.checks}
+    lines = {p.number: p.body_lines for p in m.pages}
+    heading_page = next(p.number for p in m.pages if "\nAnalisi\n" in p.text)
+    figure_page = heading_page + 1
+    assert lines[heading_page] == 28 and 24 <= lines[figure_page] <= 28, lines
+    assert not m.pages[heading_page - 1].is_full and not m.pages[figure_page - 1].is_full
+    assert by["lines_per_page"].ok, by["lines_per_page"].detail
+    full = [p for p in m.pages if p.is_full]
+    assert full and all(32 <= p.body_lines <= 34 for p in full), lines
+
+
+# --- headings typed as plain text, roman page numbers ---------------------------------------
+
+def test_unstyled_heading_is_found_but_reported_as_not_styled():
+    rules = load_rules(UNIBO)
+    pages = good_pages()
+    pages[1] = page(2, text="Indice\nIntroduzione 3\nConclusioni 9")  # a typed table of contents
+    pages[2] = page(3, text="1. Introduzione\nIl tirocinio si è svolto")
+    pages[8] = page(9, text="testo\nConclusioni e sviluppi futuri\naltro testo")
+    by = {c.rule: c for c in check_rules(pages, [], rules)}
+    intro = by["section:introduzione:present"]
+    assert intro.ok and intro.pages == [3]
+    assert "'1. Introduzione' found on page 3, but not styled as a heading" in intro.detail
+    assert not by["section:introduzione:pages"].ok
+    assert "cannot determine the length" in by["section:introduzione:pages"].detail
+    assert by["section:conclusione:present"].ok and by["section:conclusione:present"].pages == [9]
+    assert by["section:indice:present"].ok  # "Indice" alone on page 2
+    assert by["section:allegati:present"].ok and "no heading" in by["section:allegati:present"].detail
+
+
+def test_unstyled_heading_not_matched_in_prose_or_contents():
+    rules = load_rules(UNIBO)
+    pages = good_pages()
+    pages[1] = page(2, text="Introduzione 3\nIntroduzione del nuovo sistema di build in azienda.\n"
+                            "Conclusione, il lavoro è finito")
+    by = {c.rule: c for c in check_rules(pages, [], rules)}
+    assert not by["section:introduzione:present"].ok
+    assert not by["section:conclusione:present"].ok
+
+
+@needs_soffice
+def test_bold_plain_heading_is_present(tmp_path):
+    d = docx.Document()
+    d.add_paragraph("Relazione")
+    d.add_paragraph().add_run("Introduzione").bold = True
+    d.paragraphs[-1].paragraph_format.page_break_before = True
+    for text in italian_paragraphs(6):
+        d.add_paragraph(text)
+    src = tmp_path / "bozza.docx"
+    d.save(str(src))
+    m = measure(src, load_rules(UNIBO), tmp_path / "w")
+    by = {c.rule: c for c in m.checks}
+    assert by["section:introduzione:present"].ok, by["section:introduzione:present"].detail
+    assert "not styled as a heading" in by["section:introduzione:present"].detail
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("12", True), ("- 3 -", True), ("iv", True), ("XXXIX", True), ("ii.", True),
+    ("Pag. iv", True), ("pagina 7", True), ("xl", False), ("iiii", False), ("ivx", False),
+    ("Introduzione", False), ("pag. ivy", False)])
+def test_page_number_pattern_accepts_roman_numerals(text, expected):
+    from helpmewrite.measure import _PAGE_NUMBER
+    assert bool(_PAGE_NUMBER.match(text)) is expected
+
+
+@needs_soffice
+def test_roman_page_numbers_in_footer_are_found(tmp_path):
+    from docx.oxml import parse_xml
+
+    src = write_docx(tmp_path / "a.docx", italian_paragraphs(12), font="Times New Roman",
+                     size_pt=12)
+    d = docx.Document(str(src))
+    d.sections[0].footer.paragraphs[0]._p.append(parse_xml(
+        '<w:fldSimple xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'w:instr=" PAGE \\* roman "><w:r><w:t>i</w:t></w:r></w:fldSimple>'))
+    d.save(str(src))
+    pages = measure_pdf(render_pdf(src, tmp_path / "w"))
+    assert len(pages) >= 2 and all(p.has_page_number for p in pages)
+    assert "ii" in pages[1].text.splitlines()

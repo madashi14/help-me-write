@@ -7,7 +7,8 @@ page numbers and section lengths. Algorithm:
 - the body size is the most frequent size, weighted by characters; body lines are within
   0.6 pt of it and outside the header/footer bands (top and bottom 7% of the page);
 - a full line is 90-110% as wide as the reference width (see 4. below);
-- a full page has body lines spanning at least 75% of the typical span (see 5. below);
+- a full page has its body lines in every line slot between the typical top and the
+  typical bottom, give or take one (see 5. below);
 - lines and characters per line are checked on full pages only, never on page 1 (title
   page); page numbers are checked on every page but page 1. The check details name the
   pages that were skipped and why; a check that can evaluate no page is not ok.
@@ -23,11 +24,15 @@ Departures from the plan's algorithm (accepted by the controller, rulings R6 and
 4. the reference width is the 90th percentile of body-line widths, not the widest line:
    one line wider than the text area (a table kept at its old width, a long URL) would
    otherwise leave every prose line short of 90% and void chars_per_line;
-5. a full page must also reach 90% of the typical bottom (the median of the pages' lowest
-   body-line bottoms, without page 1 and the last page) and have no gap between body lines
-   wider than 4 line pitches; the typical span is such a median too, not the mean. Pages
-   that end early (before a figure that did not fit, a page-break heading, footnotes) and
-   pages interrupted by a figure have fewer lines by design and would otherwise fail.
+5. a full page reaches 90% of the typical bottom (the median of the pages' lowest
+   body-line bottoms, without page 1 and the last page) and misses at most one line slot
+   (final review, finding 8): the slots skipped above its first body line (below the
+   typical top, the same kind of median) plus the slots inside it taken by something else
+   (a heading, a figure, a table: a step between body lines wider than the paragraph step).
+   The paragraph step is the line pitch, or the usual wider step between paragraphs when
+   the document has paragraph spacing. Pages that start with a figure, hold a heading or a
+   figure, or end early (before a figure that did not fit, a page-break heading,
+   footnotes) have fewer lines by design and would otherwise fail.
 
 The rule checks live in checks.py; Check and check_rules are re-exported here.
 """
@@ -49,11 +54,14 @@ BAND = 0.07                 # header and footer bands: top and bottom 7% of the 
 BODY_SIZE_TOLERANCE_PT = 0.6
 FULL_LINE_RATIO = 0.90
 FULL_LINE_MAX_RATIO = 1.10  # wider than the text area: a table or an overflowing URL
-FULL_PAGE_RATIO = 0.75
 FULL_PAGE_BOTTOM_RATIO = 0.90
-MAX_GAP_PITCHES = 4.0       # a wider gap between body lines is a figure or a table
+MISSING_SLOTS = 1           # line slots a full page may miss (a heading at the top)
+WIDE_STEP_PITCHES = 1.15    # a wider step between body lines is not inside a paragraph
+PARAGRAPH_STEP_SHARE = 0.05  # wider steps this frequent are paragraph spacing, not headings
 
-_PAGE_NUMBER = re.compile(r"^\W*\d+\W*$|^(pag\.?|pagina|page)\s*\d+", re.IGNORECASE)
+_ROMAN = r"(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})(?<=[ivx])"  # i ... xxxix (front matter)
+_PAGE_NUMBER = re.compile(rf"^\W*(?:\d+|{_ROMAN})\W*$|^(pag\.?|pagina|page)\s*(?:\d+|{_ROMAN}\b)",
+                          re.IGNORECASE)
 _SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
 
 
@@ -148,10 +156,40 @@ def _reference_width(body) -> float:
     return statistics.quantiles(widths, n=10, method="inclusive")[-1]
 
 
+def _steps(lines) -> list[float]:
+    return [b.top - a.top for a, b in zip(lines, lines[1:]) if b.top > a.top]
+
+
 def _typical_pitch(body) -> float:
     """Median distance between consecutive body lines of a page (within a paragraph)."""
-    steps = [b.top - a.top for lines in body for a, b in zip(lines, lines[1:]) if b.top > a.top]
+    steps = [step for lines in body for step in _steps(lines)]
     return statistics.median(steps) if steps else 0.0
+
+
+def _paragraph_step(body, pitch: float) -> float:
+    """The usual step between two paragraphs: the pitch, or pitch plus paragraph spacing.
+
+    Wider steps are paragraph spacing when one value of them is frequent (every few lines);
+    headings and figures are rarer and their steps vary.
+    """
+    steps = [step for lines in body for step in _steps(lines)]
+    wide = [step for step in steps if step > WIDE_STEP_PITCHES * pitch]
+    if not wide:
+        return pitch
+    usual = Counter(round(step) for step in wide).most_common(1)[0][0]
+    near = [step for step in wide if abs(step - usual) <= 1.0]
+    return statistics.median(near) if len(near) >= PARAGRAPH_STEP_SHARE * len(steps) else pitch
+
+
+def missing_slots(lines, typical_top: float, pitch: float, paragraph_step: float) -> int:
+    """Line slots of a page not holding body lines: above the first one (below the typical
+    top) and inside, where a step is wider than the paragraph step (heading, figure)."""
+    if not lines or pitch <= 0:
+        return 0
+    above = max(0, round((lines[0].top - typical_top) / pitch))
+    inside = sum(round((step - paragraph_step) / pitch) for step in _steps(lines)
+                 if step > paragraph_step + 0.5 * pitch)
+    return above + inside
 
 
 def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
@@ -175,17 +213,16 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
     typical = ([lines for lines in body[1:-1] if lines] or [lines for lines in body[1:] if lines]
                or [lines for lines in body if lines])
     typical_bottom = statistics.median(lines[-1].bottom for lines in typical) if typical else 0.0
-    typical_span = (statistics.median(lines[-1].bottom - lines[0].top for lines in typical)
-                    if typical else 0.0)
-    max_gap = MAX_GAP_PITCHES * _typical_pitch(body)
+    typical_top = statistics.median(lines[0].top for lines in typical) if typical else 0.0
+    pitch = _typical_pitch(body)
+    paragraph_step = _paragraph_step(body, pitch)
 
     def is_full(body_lines, number):
         if not body_lines or number == len(raw):  # the text ends on the last page
             return False
-        gaps = [b.top - a.top for a, b in zip(body_lines, body_lines[1:])]
         return (body_lines[-1].bottom >= FULL_PAGE_BOTTOM_RATIO * typical_bottom
-                and body_lines[-1].bottom - body_lines[0].top >= FULL_PAGE_RATIO * typical_span
-                and max(gaps, default=0.0) <= max_gap)
+                and missing_slots(body_lines, typical_top, pitch, paragraph_step)
+                <= MISSING_SLOTS)
 
     pages = []
     for number, ((height, lines), body_lines) in enumerate(zip(raw, body), start=1):

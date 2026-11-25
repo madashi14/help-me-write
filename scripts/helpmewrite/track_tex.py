@@ -8,7 +8,7 @@ from pathlib import Path
 from .cli import same_file
 from .edits import EditsError, EditSet
 from .extract import read_tex_text, split_tex_lines
-from .render import RenderError, render_pdf
+from .render import RenderError, render_pdf, tex_engine
 from .track_docx import ApplyResult
 
 WINDOW = 2
@@ -175,7 +175,7 @@ def texdiff(old_main: Path, new_main: Path, out_pdf: Path) -> Path:
             raise RenderError(f"latexdiff failed (exit code {proc.returncode}): "
                               f"{_excerpt(proc.stderr.decode('utf-8', 'replace'))}")
         diff.write_bytes(proc.stdout)
-        pdf = render_pdf(diff, work)
+        pdf = render_pdf(diff, work, engine=tex_engine(new_main))
         out_pdf.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(pdf, out_pdf)
     finally:
