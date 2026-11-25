@@ -105,6 +105,7 @@ def test_emit_unwritable_output_is_a_clean_error(tmp_path, capsys):
     assert cli.main(["doctor", "-o", str(blocker / "doctor.json")]) == 2
     err = capsys.readouterr().err
     assert err.startswith("error: cannot write") and "Traceback" not in err
+    assert f"{blocker} is a file, not a folder" in err
 
 
 def test_unexpected_exception_exits_2_without_traceback(monkeypatch, capsys):

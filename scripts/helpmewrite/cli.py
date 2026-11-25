@@ -77,7 +77,9 @@ def emit(data: dict, args, text=None) -> None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(payload + "\n", encoding="utf-8")
         except OSError as exc:
-            raise CliError(f"cannot write {path}: {exc.strerror or exc}") from None
+            blocker = next((f for f in path.parents if f.is_file()), None)
+            reason = f"{blocker} is a file, not a folder" if blocker else exc.strerror or exc
+            raise CliError(f"cannot write {path}: {reason}") from None
         return
     if getattr(args, "json", False):
         print(payload)

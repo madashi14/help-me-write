@@ -102,7 +102,8 @@ Prints one line per check and exits 1 if any fails.
 
 ## Results
 
-Claude Code 2.1.331, headless, each run in a new folder made by `--setup`. ✓ = pass.
+Claude Code 2.1.331 (run 4: 2.1.332), headless, each run in a new folder made by
+`--setup`. ✓ = pass.
 
 - Runs 1–2 used the first version of this scenario: `--plugin-dir` and `--add-dir` on
   the repository itself, and a plain keyword search in the report. Review fix round 1
@@ -112,32 +113,33 @@ Claude Code 2.1.331, headless, each run in a new folder made by `--setup`. ✓ =
 - The outputs of runs 1–2, checked again with the new `check_revisione.py`, also pass
   22/22.
 - Run 3 is the first run with the isolated setup above.
+- Run 4 follows the fixes of the final whole-branch review (same setup).
 
-| Check of `check_revisione.py` (current) | Run 1 (2026-11-24) | Run 2 (2026-11-24) | Run 3 (2026-11-25) |
-|---|---|---|---|
-| original unchanged | ✓ | ✓ | ✓ |
-| review folder with `rapporto.md` | ✓ | ✓ | ✓ |
-| review files | ✓ | ✓ | ✓ |
-| `note-revisore.md` sections | ✓ | ✓ | ✓ |
-| `font`: `font_family` ✗ in the Form table | ✓ | ✓ | ✓ |
-| `chars_per_line`: `chars_per_line` ✗ | ✓ | ✓ | ✓ |
-| `no_index`: `section:indice:present` ✗ | ✓ | ✓ | ✓ |
-| `intro_length`: `section:introduzione:pages` ✗ | ✓ | ✓ | ✓ |
-| `typo_installaizone` | ✓ | ✓ | ✓ |
-| `typo_e_stato` | ✓ | ✓ | ✓ |
-| `typo_perche` | ✓ | ✓ | ✓ |
-| `typo_qual_e` | ✓ | ✓ | ✓ |
-| `typo_un_altro` | ✓ | ✓ | ✓ |
-| `acronym_ci_cd` | ✓ | ✓ | ✓ |
-| `figure_not_cited` | ✓ | ✓ | ✓ |
-| `personal_contribution` (Content section) | ✓ "impersonal" | ✓ "impersonal" | ✓ "impersonal" |
-| `credential` (report) | ✓ "password" | ✓ "password" | ✓ "password" |
-| report does not repeat the secret | ✓ | ✓ | ✓ |
-| revised copy exists | ✓ | ✓ | ✓ |
-| tracked insertions | ✓ 5 | ✓ 5 | ✓ 5 |
-| visible text has "installazione" | ✓ | ✓ | ✓ |
-| credential deleted or commented in the copy | ✓ both | ✓ both | ✓ both |
-| **Total** | **22/22** | **22/22** | **22/22** |
+| Check of `check_revisione.py` (current) | Run 1 (2026-11-24) | Run 2 (2026-11-24) | Run 3 (2026-11-25) | Run 4 (2026-11-25) |
+|---|---|---|---|---|
+| original unchanged | ✓ | ✓ | ✓ | ✓ |
+| review folder with `rapporto.md` | ✓ | ✓ | ✓ | ✓ |
+| review files | ✓ | ✓ | ✓ | ✓ |
+| `note-revisore.md` sections | ✓ | ✓ | ✓ | ✓ |
+| `font`: `font_family` ✗ in the Form table | ✓ | ✓ | ✓ | ✓ |
+| `chars_per_line`: `chars_per_line` ✗ | ✓ | ✓ | ✓ | ✓ |
+| `no_index`: `section:indice:present` ✗ | ✓ | ✓ | ✓ | ✓ |
+| `intro_length`: `section:introduzione:pages` ✗ | ✓ | ✓ | ✓ | ✓ |
+| `typo_installaizone` | ✓ | ✓ | ✓ | ✓ |
+| `typo_e_stato` | ✓ | ✓ | ✓ | ✓ |
+| `typo_perche` | ✓ | ✓ | ✓ | ✓ |
+| `typo_qual_e` | ✓ | ✓ | ✓ | ✓ |
+| `typo_un_altro` | ✓ | ✓ | ✓ | ✓ |
+| `acronym_ci_cd` | ✓ | ✓ | ✓ | ✓ |
+| `figure_not_cited` | ✓ | ✓ | ✓ | ✓ |
+| `personal_contribution` (Content section) | ✓ "impersonal" | ✓ "impersonal" | ✓ "impersonal" | ✓ "impersonal" |
+| `credential` (report) | ✓ "password" | ✓ "password" | ✓ "password" | ✓ "password" |
+| report does not repeat the secret | ✓ | ✓ | ✓ | ✓ |
+| revised copy exists | ✓ | ✓ | ✓ | ✓ |
+| tracked insertions | ✓ 5 | ✓ 5 | ✓ 5 | ✓ 5 |
+| visible text has "installazione" | ✓ | ✓ | ✓ | ✓ |
+| credential deleted or commented in the copy | ✓ both | ✓ both | ✓ both | ✓ both |
+| **Total** | **22/22** | **22/22** | **22/22** | **22/22** |
 
 - **Run 1:** first text of the skill. 3 min 15 s, $1.38.
   - The skill triggered (`help-me-write:revisione`), dispatched the reviewer as a
@@ -172,3 +174,24 @@ Claude Code 2.1.331, headless, each run in a new folder made by `--setup`. ✓ =
     formatting (17 pages; font, lines, characters and page numbers pass; index and the
     7-page introduction remain). The bibliography is "non eseguita".
   - Two chained commands were refused, and the agent recovered.
+- **Between runs 3 and 4 (final review fixes):** outputs are never overwritten (`track`,
+  `format`, `texdiff` name the next free name); `doctor` runs without packages; measure
+  renders the accepted text and counts full pages by line slots; the review folder has
+  seconds; skill paths are absolute (`<work>/…`, `<rev>/…`, `<parent>/…`); the
+  bibliography reviewer writes `pdftext` output to `<rev>/fonti/` and never takes the
+  draft's own PDFs as sources.
+- **Run 4:** isolated setup, 3 min 46 s, $2.12, 22 turns (main session).
+  - The review folder is `2026-11-25-090149` (seconds). Every `hmw` command used
+    absolute, quoted paths; no tool call reached the repository, `tests/` or `docs/`.
+  - Both reviewers were dispatched in parallel as subagents (one message, two dispatches).
+    The main reviewer wrote 18 edits (6 replacements and 13 comments, one edit with
+    both; longest `find` 7 words); the bibliography reviewer found no citation, no
+    bibliography and no PDF (`excluded_sources` empty) and wrote no edit. One `track`
+    applied all 18 edits.
+  - The report marks the four form checks ✗ and gives the form after formatting: 16 pages
+    (17 in run 3, measured with the tracked deletions laid out), lines per page
+    32–33 and characters 63.5–67 pass, the index and the 7-page introduction remain. Its
+    Bibliography section says there are no citations.
+  - Two chained commands were refused (`…; echo "exit $?"` in the main session, a chained
+    read in the bibliography subagent), and the agent recovered with single commands and
+    the file-reading tool.
