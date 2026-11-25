@@ -29,8 +29,10 @@ the raw material. Nothing is executed and nothing is invented.
    `hmw material "<work>" --extract "<work>/.help-me-write/materiale/estratti" -o "<work>/.help-me-write/materiale/inventario.json"`
    and read the JSON: files with type and size, git history (`git` for the work folder itself, `git_repos` for
    every nested repository, e.g. the host's project in a subfolder), dates, extracted archive
-   members, what was skipped and why. It overwrites its own JSON; the user's files are not
-   touched. If it exits 3, run `hmw doctor` and show the install hint.
+   members, what was skipped and why. A large archive (a zipped repository) is sampled:
+   `truncated` true, `member_count` and `counts_by_dir` give its size, and at most 2000
+   members are extracted, documents first (`extract_note`). It overwrites its own JSON;
+   the user's files are not touched. If it exits 3, run `hmw doctor` and show the install hint.
 2. **Author's notes first.** Read README, LEGGIMI, NOTE, diaries and similar files before
    anything else. They are constraints (what to stress, what to leave out, how to name
    things): copy them, with their file, into the section "Note dell'autore".

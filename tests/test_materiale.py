@@ -134,6 +134,37 @@ def test_material_zip_backslash_members(tmp_path):
     assert len(arc["skipped"]) == 3 and not arc["extracted"]
 
 
+def test_material_zip_member_caps(tmp_path, capsys):
+    """I6: a zipped repository with more than 2000 members neither floods the inventory nor
+    the extraction folder; the author's notes are extracted first."""
+    work = tmp_path / "w"
+    members = {f"repo/node_modules/p{i // 100:02}/f{i:04}.js": b"" for i in range(2500)}
+    members.update({f"repo/build/o{i:04}.o": b"" for i in range(2100)})
+    members["repo/README.md"] = b"leggimi"
+    _zip(work / "repo.zip", members)
+    out = tmp_path / "e"
+    inv = inventory(work, out)
+    arc = inv["archives"][0]
+    assert arc["member_count"] == 4601 and arc["truncated"] is True
+    assert len(arc["members"]) == materiale.MAX_MEMBERS == 2000
+    assert arc["counts_by_dir"] == {"repo": 1, "repo/build": 2100, "repo/node_modules": 2500}
+    assert len(arc["extracted"]) == materiale.MAX_EXTRACT_MEMBERS == 2000
+    assert len(_all_files(out)) == 2000
+    assert arc["extracted"][0]["name"] == "repo/README.md"
+    assert len(arc["skipped"]) == materiale.MAX_MEMBERS
+    assert arc["skipped_not_listed"] == 100
+    assert arc["extract_note"].startswith("501 members not extracted")
+    assert len(json.dumps(inv)) < 1_000_000
+    # in total too: a second archive is listed within what is left
+    _zip(work / "altro.zip", {f"x/{i:04}.txt": b"t" for i in range(10)})
+    inv = inventory(work, tmp_path / "e2")
+    altro = next(a for a in inv["archives"] if a["path"] == "altro.zip")
+    assert altro["member_count"] == 10 and len(altro["members"]) == 10
+    assert sum(len(a.get("extracted", [])) for a in inv["archives"]) == 2000
+    assert main(["material", str(work)]) == 0
+    assert "archive repo.zip: 4601 members (2000 listed)" in capsys.readouterr().out
+
+
 def test_material_total_extract_limit(tmp_path, monkeypatch):
     work = tmp_path / "w"
     monkeypatch.setattr(materiale, "MAX_EXTRACT_BYTES", 15)

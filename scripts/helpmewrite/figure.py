@@ -138,6 +138,9 @@ def _points_from_values(items, base: Path):
         except (KeyError, TypeError):
             raise FigureError('each "values" entry needs "label", "file" and "key"') from None
         name = item.get("series") or ""
+        if label in series.get(name, {}):
+            raise FigureError(f'"values": label {label!r} appears twice in series {name!r}: '
+                              "only one value per label and series can be plotted")
         value = json_value(base / file, key)
         if label not in cats:
             cats.append(label)

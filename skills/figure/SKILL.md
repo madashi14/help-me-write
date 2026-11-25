@@ -59,7 +59,8 @@ number, a caption and a reference in the text.
    `hmw chart "<work>/.help-me-write/figure/<fig>.json" -o "<work>/<output>/immagini/<fig>.png"`
    (Word: `-o "<work>/.help-me-write/figure/<fig>.png"`). Beside the image it writes
    `<fig>.png.fonte.json`: every plotted value with its file and position (column and
-   row, or key). Keep it there, never edit or delete it. Exit 2: the message names the
+   row, or key; "row N" is the N-th data row, the header not counted, so row 1 is the
+   line after the header). Keep it there, never edit or delete it. Exit 2: the message names the
    file, column or row: fix the spec, never the data. An image that exists is never
    overwritten: use the free name the message gives.
 4. **Numbers must match the provenance.** A value in the caption or in the text about the

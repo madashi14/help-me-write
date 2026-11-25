@@ -69,6 +69,25 @@ def test_chart_missing_key_names_file_and_key(tmp_path, capsys):
     assert not (tmp_path / "g.png").exists()
 
 
+def test_chart_values_repeated_label_and_series_exit_2(tmp_path, capsys):
+    """Ledger must-fix: the same label twice in one series would plot only the last value
+    while the provenance lists both; it is refused (exit 2), nothing is written."""
+    (tmp_path / "m.json").write_text(json.dumps({"a": 0.82, "b": 0.75}))
+    spec = tmp_path / "s.json"
+    spec.write_text(json.dumps({"type": "bar", "values": [
+        {"label": "Accuracy", "series": "test", "file": "m.json", "key": "a"},
+        {"label": "Accuracy", "series": "test", "file": "m.json", "key": "b"}]}))
+    assert cli.main(["chart", str(spec), "-o", str(tmp_path / "g.png")]) == 2
+    err = capsys.readouterr().err
+    assert "Accuracy" in err and "test" in err and "Traceback" not in err
+    assert not (tmp_path / "g.png").exists() and not (tmp_path / "g.png.fonte.json").exists()
+    # the same label in two series is fine
+    spec.write_text(json.dumps({"type": "bar", "values": [
+        {"label": "Accuracy", "series": "train", "file": "m.json", "key": "a"},
+        {"label": "Accuracy", "series": "test", "file": "m.json", "key": "b"}]}))
+    assert cli.main(["chart", str(spec), "-o", str(tmp_path / "g.png")]) == 0
+
+
 def test_chart_cli_writes_provenance_and_refuses_existing(tmp_path, capsys):
     (tmp_path / "c.csv").write_text("x,y\na,1\nb,2\n")
     spec = tmp_path / "s.json"

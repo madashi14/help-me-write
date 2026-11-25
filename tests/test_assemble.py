@@ -1,4 +1,5 @@
 """hmw assemble: a .docx from Markdown chapter sources, with TOC, captions and bibliography."""
+import copy
 import json
 import re
 import zipfile
@@ -328,6 +329,39 @@ def test_assemble_title_page_without_soffice(tmp_path, monkeypatch):
     assert "numbering+xml" in types
     paras = docx.Document(str(out)).paragraphs
     assert any(p._p.find(f"{qn('w:pPr')}/{qn('w:numPr')}") is not None for p in paras)
+
+
+def test_assemble_title_page_restore_guard(tmp_path, monkeypatch):
+    """Ledger cheap fix: when the layout no longer keeps the title page's body elements one
+    for one, the restore is skipped with a warning instead of replacing the wrong ones."""
+    import docx
+
+    from helpmewrite import assemble as assemble_module
+    from helpmewrite.titlepage import fill_title_page
+
+    no_soffice(monkeypatch)
+    manifest = write_project(tmp_path, [CHAPTER_1, CHAPTER_2], {"title_page": "frontespizio.docx"})
+    model = manifest.parent / "frontespizio.docx"
+    fill_title_page(FACSIMILE, [(r["find"], r["with"]) for r in TITLE_VALUES["replace"]], model,
+                    TITLE_VALUES["start_at"])
+    real = assemble_module.apply_layout
+
+    def shifting_layout(src, layout, out):  # a layout that adds a paragraph at the top
+        changes = real(src, layout, out)
+        document = docx.Document(str(out))
+        body = document.element.body
+        body.insert(0, copy.deepcopy(document.paragraphs[0]._p))
+        document.paragraphs[0].runs[0].text = "Paragrafo aggiunto"
+        document.save(str(out))
+        return changes
+
+    monkeypatch.setattr(assemble_module, "apply_layout", shifting_layout)
+    stats = assemble(manifest, tmp_path / "relazione.docx")
+    assert any("title page" in w and "not restored" in w for w in stats["warnings"]), \
+        stats["warnings"]
+    after = [p["text"] for p in extract(tmp_path / "relazione.docx")["paragraphs"]]
+    before = [p["text"] for p in extract(model)["paragraphs"]]
+    assert after[0] == "Paragrafo aggiunto" and after[1:len(before) + 1] == before
 
 
 @needs_soffice

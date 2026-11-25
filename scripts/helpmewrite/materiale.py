@@ -19,6 +19,9 @@ from pathlib import Path
 from . import detect
 
 MAX_FILES = 2000
+MAX_MEMBERS = 2000  # archive members listed (and skip reasons) per archive
+MAX_MEMBERS_TOTAL = 5000  # archive members listed over all archives
+MAX_EXTRACT_MEMBERS = 2000  # archive members extracted over all archives
 MAX_MEMBER_BYTES = 20 * 1024 * 1024
 MAX_EXTRACT_BYTES = 200 * 1024 * 1024
 MAX_OUTPUT_LINES = 30
@@ -37,6 +40,8 @@ _KIND = {ext: kind for kind, exts in _EXT.items() for ext in exts.split()}
 _TEXT_DATA = {".csv", ".tsv", ".json", ".dat", ".txt"}
 _TEXT_DOC = {".md", ".txt", ".tex", ".bib"}
 _EXTRACT_KINDS = {"code", "notebook", "image"}
+# extraction order under the member limit: the author's notes and documents first
+_EXTRACT_ORDER = {"document": 0, "notebook": 1, "data": 2, "code": 3, "image": 4}
 _DATE_NOTE = ("File dates are probably those of a copy or an upload, not of the work: "
               "do not use them to date the work; ask the user.")
 
@@ -111,7 +116,17 @@ def _copy_member(zf, info, target: Path, limit: int) -> int | None:
     return total
 
 
-def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
+def _member_dir(name: str) -> str:
+    """The folder of an archive member, at most two levels deep ("." at the root)."""
+    parts = [p for p in name.replace("\\", "/").split("/")[:-1] if p]
+    return "/".join(parts[:2]) or "."
+
+
+def _read_zip(path: Path, rel: str, extract_dir: Path | None, budget: dict | None = None) -> dict:
+    """List (and extract) the members of one zip. budget holds what is left of the limits
+    shared by every archive of one inventory: "listed" and "extracted" members."""
+    if budget is None:
+        budget = {"listed": MAX_MEMBERS_TOTAL, "extracted": MAX_EXTRACT_MEMBERS}
     entry = {"path": rel, "opened": False}
     try:
         zf = zipfile.ZipFile(path)
@@ -121,9 +136,18 @@ def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
     with zf:
         infos = [i for i in zf.infolist() if not i.is_dir()]
         entry["opened"] = True
+        listed = max(0, min(len(infos), MAX_MEMBERS, budget["listed"]))
+        budget["listed"] -= listed
+        entry["member_count"] = len(infos)
         entry["members"] = [{"name": i.filename, "kind": kind_of(i.filename),
-                             "size": i.file_size, "date": _zip_date(i)} for i in infos]
-        dates = sorted(m["date"] for m in entry["members"] if m["date"])
+                             "size": i.file_size, "date": _zip_date(i)} for i in infos[:listed]]
+        entry["truncated"] = listed < len(infos)
+        if entry["truncated"]:
+            counts = {}
+            for i in infos:
+                counts[_member_dir(i.filename)] = counts.get(_member_dir(i.filename), 0) + 1
+            entry["counts_by_dir"] = dict(sorted(counts.items()))
+        dates = sorted(d for d in (_zip_date(i) for i in infos) if d)
         entry["first"], entry["last"] = (dates[0], dates[-1]) if dates else (None, None)
         if extract_dir is None:
             return entry
@@ -135,8 +159,18 @@ def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
         if dest.exists():
             entry["note"] = "already extracted"
             return entry
-        skipped, used = entry["skipped"], 0
-        for info in infos:
+        used, not_extracted, not_listed = 0, 0, 0
+
+        def skip(name, reason):
+            nonlocal not_listed
+            if len(entry["skipped"]) < MAX_MEMBERS:
+                entry["skipped"].append({"name": name, "reason": reason})
+            else:
+                not_listed += 1
+
+        order = sorted(range(len(infos)),
+                       key=lambda n: (_EXTRACT_ORDER.get(kind_of(infos[n].filename), 9), n))
+        for info in (infos[n] for n in order):
             name = info.filename
             mode = (info.external_attr >> 16) & 0o170000
             kind = kind_of(name)
@@ -156,27 +190,36 @@ def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
             elif reason is None and used + info.file_size > MAX_EXTRACT_BYTES:
                 reason = f"total extraction limit of {MAX_EXTRACT_BYTES} bytes reached"
             if reason:
-                skipped.append({"name": name, "reason": reason})
+                skip(name, reason)
+                continue
+            if budget["extracted"] <= 0:
+                not_extracted += 1
                 continue
             target = dest.joinpath(*name.replace("\\", "/").split("/"))
             if dest.resolve() not in target.resolve().parents or target.exists():
-                skipped.append({"name": name, "reason": "unsafe or duplicate destination"})
+                skip(name, "unsafe or duplicate destination")
                 continue
             try:
                 size = _copy_member(zf, info, target,
                                     min(MAX_MEMBER_BYTES, MAX_EXTRACT_BYTES - used))
             except (zipfile.BadZipFile, EOFError, zlib.error) as exc:
-                skipped.append({"name": name, "reason": f"corrupt member: {exc}"})
+                skip(name, f"corrupt member: {exc}")
                 continue
             except (OSError, RuntimeError, NotImplementedError) as exc:
-                skipped.append({"name": name, "reason": f"cannot extract: {exc}"})
+                skip(name, f"cannot extract: {exc}")
                 continue
             if size is None:
-                skipped.append({"name": name, "reason": "larger than the extraction limit"})
+                skip(name, "larger than the extraction limit")
                 continue
             used += size
+            budget["extracted"] -= 1
             entry["extracted"].append({"name": name, "size": size,
                                        "path": target.relative_to(extract_dir).as_posix()})
+        if not_listed:
+            entry["skipped_not_listed"] = not_listed
+        if not_extracted:
+            entry["extract_note"] = (f"{not_extracted} members not extracted: limit of "
+                                     f"{MAX_EXTRACT_MEMBERS} extracted members reached")
     return entry
 
 
@@ -205,6 +248,7 @@ def inventory(work: Path, extract_dir: Path | None = None) -> dict:
     skip_extract = extract_dir.resolve() if extract_dir is not None else None
     files, archives, skipped_dirs, counts = [], [], [], {}
     truncated = False
+    budget = {"listed": MAX_MEMBERS_TOTAL, "extracted": MAX_EXTRACT_MEMBERS}
     repo_dirs = []
     for root, dirs, names in os.walk(work):
         if (Path(root) / ".git").exists():  # a directory, or a file for worktrees/submodules
@@ -232,7 +276,7 @@ def inventory(work: Path, extract_dir: Path | None = None) -> dict:
             files.append({"path": rel, "kind": kind_of(name), "size": st.st_size,
                           "modified": _day(st.st_mtime)})
             if _ext(name) == ".zip":
-                archives.append(_read_zip(full, rel, extract_dir))
+                archives.append(_read_zip(full, rel, extract_dir, budget))
             elif kind_of(name) == "archive":
                 archives.append({"path": rel, "opened": False})
     git = _git_history(work)
@@ -362,11 +406,16 @@ def run_material(args) -> int:
     lines += [f"  {k}: {v}" for k, v in sorted(counts.items())]
     for a in inv["archives"]:
         if a["opened"]:
-            lines.append(f"archive {a['path']}: {len(a['members'])} members, "
-                         f"{a['first']} to {a['last']}"
+            lines.append(f"archive {a['path']}: {a['member_count']} members"
+                         + (f" ({len(a['members'])} listed)" if a["truncated"] else "")
+                         + f", {a['first']} to {a['last']}"
                          + (f", extracted {len(a['extracted'])} to {a['extracted_to']}"
                             if "extracted" in a else ""))
             lines += [f"  skipped {s['name']}: {s['reason']}" for s in a.get("skipped", [])]
+            if a.get("skipped_not_listed"):
+                lines.append(f"  skipped {a['skipped_not_listed']} more members, not listed")
+            if a.get("extract_note"):
+                lines.append(f"  {a['extract_note']}")
         else:
             lines.append(f"archive {a['path']}: not opened")
     g = inv["git"]

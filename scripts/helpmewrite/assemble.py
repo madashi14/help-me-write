@@ -1447,13 +1447,28 @@ def _freeze_title_styles(document, before, paragraphs) -> None:
         ps.set(_q("val"), mapping[sid])
 
 
-def _restore_title_page(document, before, count: int) -> None:
+TITLE_NOT_RESTORED = ("title page not restored to the model's formatting: the layout did not "
+                      "keep its elements one for one, so it keeps the layout's formatting; "
+                      "check it in Word")
+
+
+def _element_text(element) -> str:
+    return "".join(t.text or "" for t in element.iter(_q("t")))
+
+
+def _restore_title_page(document, before, count: int) -> str | None:
     """Put the first count body elements (the title page) back as they were before
     apply_layout, with the page geometry of the model and its frozen styles; the section
-    properties keep what apply_layout added (the footer with the page number)."""
+    properties keep what apply_layout added (the footer with the page number).
+
+    Only when apply_layout kept those elements one for one (same tags and texts): else
+    nothing is replaced and the warning TITLE_NOT_RESTORED is returned."""
     body, old_body = document.element.body, before.element.body
     now = list(body)[:count]
     original = list(old_body)[:count]
+    if len(now) != count or len(original) != count or any(
+            a.tag != b.tag or _element_text(a) != _element_text(b) for a, b in zip(now, original)):
+        return TITLE_NOT_RESTORED
     laid_sect = now[-1].find(f"{_q('pPr')}/{_q('sectPr')}")
     old_sect = original[-1].find(f"{_q('pPr')}/{_q('sectPr')}")
     restored = [copy.deepcopy(e) for e in original]
@@ -1477,6 +1492,7 @@ def _restore_title_page(document, before, count: int) -> None:
         if not hasattr(part, "element"):
             part._blob = etree.tostring(root, xml_declaration=True, encoding="UTF-8",
                                         standalone=True)
+    return None
 
 
 # --- table of contents numbers -------------------------------------------------------------
@@ -1554,7 +1570,9 @@ def assemble(manifest: Path, out: Path) -> dict:
         apply_layout(base, project.layout, laid)
         document = docx.Document(str(laid))
         if builder.title_count:
-            _restore_title_page(document, docx.Document(str(base)), builder.title_count)
+            warning = _restore_title_page(document, docx.Document(str(base)), builder.title_count)
+            if warning:
+                builder.warnings.append(warning)
         final = work / "documento.docx"
         document.save(str(final))
         if builder.toc_entries:
