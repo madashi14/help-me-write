@@ -25,6 +25,7 @@ PACKAGES = {"docx": "python-docx", "lxml": "lxml", "pdfplumber": "pdfplumber",
 _COMMANDS = {
     "bib": ("bib", "add_bib_arguments", "run_bib", True,
             ("lxml", "docx", "pdfplumber", "bibtexparser")),
+    "detect": ("detect", "add_arguments", "run", True, ("lxml", "docx")),
     "doctor": ("doctor", "add_arguments", "run", True, ()),
     "extract": ("extract", "add_arguments", "run", True, ("lxml", "docx", "pdfplumber")),
     "format": ("layout", "add_format_arguments", "run_format", False, ("lxml", "docx")),
@@ -34,6 +35,7 @@ _COMMANDS = {
     "pdftext": ("bib", "add_pdftext_arguments", "run_pdftext", True,
                 ("lxml", "pdfplumber")),
     "rules": ("rules", "add_arguments", "run", True, ("yaml",)),
+    "state": ("state", "add_arguments", "run", False, ("yaml",)),
     "texdiff": ("track_tex", "add_texdiff_arguments", "run_texdiff", False, ("lxml",)),
     "track": ("edits", "add_track_arguments", "run_track", False, ("lxml", "docx")),
 }

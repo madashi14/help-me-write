@@ -128,7 +128,7 @@ def test_unexpected_exception_exits_2_without_traceback(monkeypatch, capsys):
 def test_parser_builds_every_command():
     parser = cli._build_parser()
     for name in cli._COMMANDS:
-        args = {"bib": ["x.docx"], "doctor": [], "extract": ["x.docx"],
+        args = {"bib": ["x.docx"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
                 "format": ["x.docx", "--layout", "l.json", "-o", "y.docx"],
                 "layout": ["--rules", "r.yaml", "--font", "Times"],
                 "measure": ["x.docx", "--rules", "r.yaml"], "pdftext": ["x.pdf"],
