@@ -17,11 +17,14 @@
         exit 1 if any fails.
 
 Number check (5): the text of 06_conclusioni.tex of the working copy is stripped of
-comments, `\\label`, `\\ref`, `\\cite`, `\\includegraphics`, `\\vspace`-like commands with
-their arguments, optional `[...]` arguments, other `\\command` names and math delimiters;
-every number left (`\\d+(?:[.,]\\d+)?`) must occur, as a whole number and with `.` or `,`
-as decimal separator, in chapters 1-5 of the copy (files 01..05_*.tex), in materiale.md
-or in risposte.md. Section numbers do not appear: LaTeX numbers sections itself.
+comments; its LaTeX number formatting is made plain (`{,}` and `{.}` become `,` and `.`;
+`\\,`, `\\;`, `\\ ` and `~` a space; `\\%` a `%`; the same in the texts it is compared
+with); then `\\label`, `\\ref`, `\\cite`, `\\includegraphics` and `\\vspace`-like commands
+with their arguments, optional `[...]` arguments, other `\\command` names and math
+delimiters are dropped. Every number left (`\\d+(?:[.,]\\d+)?`) must occur, as a whole
+number and with `.` or `,` as decimal separator, in chapters 1-5 of the copy (files
+01..05_*.tex), in materiale.md or in risposte.md. Section numbers do not appear: LaTeX
+numbers sections itself.
 """
 import hashlib
 import json
@@ -222,9 +225,16 @@ def _section(text: str, names) -> str:
     return "\n".join(out)
 
 
+def normalize_numbers(tex: str) -> str:
+    """LaTeX number formatting as plain text: `32{,}4\\,\\%` -> `32,4 %`, `1~000` -> `1 000`."""
+    tex = re.sub(r"\{([.,])\}", r"\1", tex)
+    tex = re.sub(r"\\[,;: ]", " ", tex)
+    return tex.replace("~", " ").replace("\\%", "%")
+
+
 def conclusion_text(tex: str) -> str:
     """Plain text of a LaTeX chapter: what is left after dropping what is not prose."""
-    tex = re.sub(r"(?<!\\)%.*", "", tex)
+    tex = normalize_numbers(re.sub(r"(?<!\\)%.*", "", tex))
     tex = re.sub(r"\\(?:label|ref|eqref|autoref|cref|Cref|pageref|cite[a-z]*|includegraphics"
                  r"|vspace|hspace|setlength|input|include)\*?(?:\[[^\]]*\])*\{[^{}]*\}", " ", tex)
     tex = re.sub(r"\\(?:chapter|section|subsection)\*?(?:\[[^\]]*\])?\{", "{", tex)
@@ -244,6 +254,15 @@ def number_in(number: str, corpus: str) -> bool:
         if re.search(rf"(?<![\d.,]){re.escape(form)}(?![\d]|[.,]\d)", corpus):
             return True
     return False
+
+
+def traceable_numbers(conclusion_tex: str, corpus: str):
+    """(plain text, its numbers, those not in the corpus) for check 5; the corpus (chapters
+    1-5, materiale.md, risposte.md) is read with the same number formatting."""
+    text = conclusion_text(conclusion_tex)
+    numbers = numbers_of(text)
+    corpus = normalize_numbers(corpus)
+    return text, numbers, [n for n in numbers if not number_in(n, corpus)]
 
 
 def _find_work(lavoro: Path):
@@ -369,9 +388,7 @@ def check(tmp: Path) -> int:
     if conclusion_file is None:
         add(False, "5 conclusions written, numbers traceable", "no 06_conclusioni.tex in the copy")
     else:
-        text = conclusion_text(_read(conclusion_file))
-        nums = numbers_of(text)
-        untraced = [n for n in nums if not number_in(n, corpus)]
+        text, nums, untraced = traceable_numbers(_read(conclusion_file), corpus)
         problems = []
         if len(text) < MIN_CONCLUSION_CHARS:
             problems.append(f"{len(text)} characters of text (need {MIN_CONCLUSION_CHARS})")

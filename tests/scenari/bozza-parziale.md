@@ -106,8 +106,10 @@ the state is read with `helpmewrite.state`):
    on its `main.tex` gives `chars_per_line`, `lines_per_page` and `page_numbers` OK.
 5. **Conclusions:** `06_conclusioni.tex` of the copy has at least 1500 characters of
    text, and every number in it (regex `\d+(?:[.,]\d+)?`, after dropping comments,
-   `\label`/`\ref`/`\cite`/`\includegraphics`, other commands and optional arguments)
-   occurs in chapters 1–5 of the copy, in `materiale.md` or in `risposte.md`.
+   reading LaTeX number formatting as plain text (`{,}` as `,`, `\,` and `~` as a space,
+   `\%` as `%`), and dropping `\label`/`\ref`/`\cite`/`\includegraphics`, other commands
+   and optional arguments) occurs in chapters 1–5 of the copy, in `materiale.md` or in
+   `risposte.md`.
 6. **Title page:** the `\newcommand` lines of the copy's `main.tex` hold the values of
    `risposte.md` (`\NomeStudente`, `\MatricolaStudente`, `\CorsoDiStudio`, `\CodiceCorso`,
    `\StrutturaOspitante`, `\TutorOspitante`, `\AnnoAccademico`).
@@ -139,5 +141,27 @@ copy with `hmw measure` (a temporary folder for the PDF).
 
 ## Results
 
-Not run yet: the controller runs it once after the review of Task 14 and records the
-outcome and cost here ("Esecuzione 1").
+### Esecuzione 1
+
+- **When and how:** 2026-11-25, `claude -p --model sonnet`, headless, in a folder made by
+  `--setup`. Success: 102 turns, 541 s, 2.57 USD. No subagents.
+- **Tool errors:** 6 × `hmw measure` exit 1 (expected: some checks fail on the draft and
+  the copy) and 1 `file` command not allowed by the headless allow-list.
+- **Checker: 7/8.** Check 5 failed on "32", a false negative of the checker: the
+  conclusions write `\(32{,}4\,\%\)`, chapter 5 has `32,4\,\%`, and the checker read
+  `32{,}4` as two numbers. The final fix wave (S1) reads LaTeX number formatting before
+  extracting the numbers (`tests/test_check_bozza_parziale.py`). On the agent's side:
+  8/8.
+- **Working copy and cuts:** the copy with the corrected layout has 41 pages (the draft
+  compiles to 36). The cut proposal, under `.help-me-write/revisioni/<ts>/tagli.md`, is
+  not applied: level A removes 203 of the 363 lines needed ((41 − 30) × 33); with every
+  level the estimate is 30–31 pages, an estimate that only a measure after applying them
+  can confirm.
+- **Chapters 1–5** were left `scritto`: `risposte.md` does not approve them.
+- **Observed (S2):** after `risposte.md` had approved the conclusions "as written", the
+  agent shortened them to fit one page, and said so in its summary. The final fix wave
+  makes scrittura-capitolo and struttura say that an approved chapter is never changed
+  without a new approval: propose the change, set the status back to `scritto`, ask
+  again.
+- **Agent's final summary (first line):** «Le conclusioni sono scritte e approvate, il
+  frontespizio è compilato e i tagli per le 30 pagine sono proposti ma non applicati.»

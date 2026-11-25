@@ -46,7 +46,7 @@ stato contiene solo percorsi relativi.
 |---|---|---|
 | Uscita | `<nome>-help-me-write/<nome>.docx` | progetto in `<nome>-help-me-write/` (`main.tex`, `capitoli/`, `immagini/`) |
 | Serve | LibreOffice (misura e conversione) | `latexmk` e XeLaTeX (o LuaLaTeX); `latexdiff` per le differenze |
-| Bozza parziale | i tagli sono revisioni tracciate in un nuovo `.docx` | la copia di lavoro `<progetto>-help-me-write/` accanto al progetto; i tagli sono modifiche con un PDF delle differenze |
+| Bozza parziale | i tagli sono revisioni tracciate in un nuovo `.docx` | la copia di lavoro `<progetto>-help-me-write/` accanto al progetto (dentro la cartella del progetto, al primo livello, se la cartella che indichi è il progetto stesso); i tagli sono modifiche con un PDF delle differenze in `.help-me-write/revisioni/` |
 
 Il formato di una bozza parziale si ricava dalla bozza (`.docx` o `.tex`).
 
@@ -56,7 +56,8 @@ Tre tipi di figura, nessun altro: grafici disegnati dai tuoi file di dati (CSV, 
 valori sono tracciati in un file `.fonte.json`), schemi a blocchi disegnati da ciò che
 descrivi, immagini che hai già. Ogni figura ha numero, didascalia e un riferimento nel
 testo. Il plugin non crea mai immagini fotografiche o artistiche e non usa servizi di
-immagini generate. Grafici e schemi richiedono `matplotlib` (vedi `README.md`).
+immagini generate. Grafici e schemi richiedono `matplotlib` (vedi `README.md`); senza
+`matplotlib` il resto funziona, revisione compresa.
 
 ### La cartella `.help-me-write/`
 
@@ -84,7 +85,8 @@ I percorsi scritti nello stato sono relativi alla cartella del lavoro.
    `python -m venv`).
 2. Controlla l'ambiente: chiedi all'assistente "Esegui il controllo dell'ambiente di
    help-me-write (doctor)". Dice cosa manca (pacchetti Python, LibreOffice per Word,
-   `latexmk` e `latexdiff` per LaTeX) e il comando per installarlo. Le skill lo eseguono
+   `latexmk` e `latexdiff` per LaTeX) e il comando per installarlo; `matplotlib` è
+   elencato a parte, come facoltativo (solo grafici e schemi). Le skill lo eseguono
    comunque all'inizio di ogni revisione.
 3. Metti la bozza in una cartella di lavoro. Le fonti della bibliografia (PDF) possono
    stare nella stessa cartella o in sue sottocartelle. Aggiungi le linee guida
@@ -152,7 +154,8 @@ misura di nuovo. Il ciclo di risposte è al massimo di 2 giri; poi decidi tu.
 Il revisore della bibliografia legge le tue fonti in locale: i PDF nella cartella di
 lavoro e nelle sue sottocartelle. Non usa mai come fonte la bozza stessa: il PDF esportato
 della bozza (`bozza.pdf`), le copie `-revisionato` e `-formattato`, i PDF `-differenze` e
-le cartelle `-revisionato`. Online usa la ricerca e la lettura di pagine solo se
+le cartelle `-revisionato`, né ciò che help-me-write ha scritto (le cartelle
+`-help-me-write` e i loro PDF). Online usa la ricerca e la lettura di pagine solo se
 l'ambiente le offre, e invia solo titoli, autori e DOI, mai il testo della bozza. Senza
 rete le citazioni che non può controllare sono segnate "non verificabile". Non inserisce
 mai fonti che non ha verificato.
@@ -170,7 +173,8 @@ mai fonti che non ha verificato.
   scenario automatico (gli scenari provano la prima revisione).
 - I titoli delle sezioni si leggono da dove sono più affidabili: dagli stili Titolo di un
   .docx, da `\chapter`, `\section` e `\subsection` dei sorgenti .tex (seguendo `\input`
-  e `\include`, con indice, elenco delle figure e bibliografia generati da LaTeX) o dai
+  e `\include`, con indice, elenchi delle figure e delle tabelle e bibliografia generati
+  da LaTeX, anche una `thebibliography` scritta a mano) o dai
   segnalibri di un PDF. Un PDF senza segnalibri non ha titoli leggibili: il rapporto segna
   le sezioni "non determinabile", da verificare a mano.
 - Un titolo scritto come testo normale (ad esempio in grassetto) invece che con uno stile
@@ -195,7 +199,9 @@ mai fonti che non ha verificato.
 - In una bozza Word parziale il comando di revisione sostituisce testo dentro i paragrafi
   ma non inserisce capitoli: i capitoli nuovi arrivano in un documento a parte,
   `<nome>-capitoli-nuovi.docx`, da incollare nel tuo.
-- Gli scenari `da-zero-word` e `ripresa` sono scritti ma non ancora eseguiti; della Parte
-  2 la prova su una bozza LaTeX reale è `tests/scenari/bozza-parziale.md`.
+- Gli scenari `da-zero-word` e `ripresa` sono scritti ma non ancora eseguiti. Della Parte
+  2 la prova su una bozza LaTeX reale, `tests/scenari/bozza-parziale.md`, è stata
+  eseguita una volta: "Esecuzione 1" in fondo al file (8 controlli su 8 dal lato
+  dell'assistente).
 - `material` legge anche i repository git annidati nella cartella (`git_repos`) e ne
   riassume la storia; senza `git` la storia viene omessa.
