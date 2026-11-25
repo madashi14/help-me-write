@@ -70,6 +70,28 @@ def test_tex_headings_short_title_and_nested_braces(tmp_path):
     assert _titles(tex_headings(main)) == [("Titolo lungo di prova", 1), ("Bibliografia", 1)]
 
 
+@pytest.mark.parametrize("cls, babel, expected", [
+    ("report", "[main=italian,english]", ["Indice", "Elenco delle tabelle", "Conclusioni",
+                                          "Bibliografia"]),
+    ("report", "[italian,english]", ["Contents", "List of Tables", "Conclusioni",
+                                     "Bibliography"]),
+    ("article", "[english, main = italian]", ["Indice", "Elenco delle tabelle", "Conclusioni",
+                                              "Riferimenti bibliografici"]),
+    ("article", "[italian]", ["Indice", "Elenco delle tabelle", "Conclusioni",
+                              "Riferimenti bibliografici"]),
+])
+def test_tex_headings_thebibliography_listoftables_and_babel_main(tmp_path, cls, babel, expected):
+    """I8: \\begin{thebibliography} and \\listoftables yield headings; babel's main= wins."""
+    main = _write(tmp_path / "main.tex",
+                  f"\\documentclass{{{cls}}}\n\\usepackage{babel}{{babel}}\n\\begin{{document}}\n"
+                  "\\tableofcontents\n\\listoftables\n\\section{Conclusioni}\nTesto.\n"
+                  "\\begin{thebibliography}{9}\n\\bibitem{a} A. Autore, Titolo.\n"
+                  "\\end{thebibliography}\n\\begin{figure}x\\end{figure}\n\\end{document}\n")
+    found = tex_headings(main)
+    assert [h["text"] for h in found] == expected
+    assert found[-1]["line"] == 8 and found[-1]["heading_level"] == 1
+
+
 def test_document_headings_none_for_unknown_source(tmp_path):
     pdf = tmp_path / "x.pdf"
     pdf.write_bytes(b"%PDF-1.4\n")

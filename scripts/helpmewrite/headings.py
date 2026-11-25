@@ -2,7 +2,8 @@
 
 .docx: the paragraphs with a heading style (extract.extract). .tex: \\chapter, \\section and
 \\subsection of the main file and of the files it \\input or \\include, plus the headings
-LaTeX generates (table of contents, list of figures, bibliography). .pdf: its bookmarks
+LaTeX generates (table of contents, lists of figures and tables, bibliography: \\bibliography,
+\\printbibliography or a hand-written thebibliography). .pdf: its bookmarks
 (outline). Every heading is a dict with "text" and "heading_level" (the keys section_spans
 reads); those from .tex also have "file" (relative to the folder of the main file) and "line".
 """
@@ -11,12 +12,14 @@ import re
 import unicodedata
 from pathlib import Path
 
-_COMMAND = re.compile(r"\\(chapter|section|subsection|tableofcontents|listoffigures|bibliography"
-                      r"|printbibliography|input|include|end)(?![a-zA-Z])")
+_COMMAND = re.compile(r"\\(chapter|section|subsection|tableofcontents|listoffigures|listoftables"
+                      r"|bibliography|printbibliography|input|include|begin|end)(?![a-zA-Z])")
 _GENERATED = {  # command -> (Italian, English)
     "tableofcontents": ("Indice", "Contents"),
     "listoffigures": ("Elenco delle figure", "List of Figures"),
+    "listoftables": ("Elenco delle tabelle", "List of Tables"),
 }
+_BIBLIOGRAPHY_COMMANDS = ("bibliography", "printbibliography", "thebibliography")
 _BIBLIOGRAPHY = {  # (book-like class?) -> (Italian, English)
     True: ("Bibliografia", "Bibliography"),
     False: ("Riferimenti bibliografici", "References"),
@@ -120,6 +123,10 @@ def _walk(main: Path):
                     state["ended"] = True
                     return
                 continue
+            if name == "begin":  # only a hand-written bibliography makes a heading
+                if arg and arg[0].strip() == "thebibliography":
+                    yield ("command", "thebibliography", "", path, line)
+                continue
             if name in ("input", "include"):
                 target = _resolve_include(base, arg[0]) if arg else None
                 if target is None or target.resolve() in visited:
@@ -179,11 +186,14 @@ def clean_title(raw: str) -> str:
 # --- tex headings --------------------------------------------------------------------------
 
 def _language(text: str) -> str:
-    """"it" or "en" from babel or polyglossia (English without either)."""
+    """"it" or "en" from babel or polyglossia (English without either). In babel's options
+    the main language is `main=<language>`, else the last one."""
     found = "en"
     for m in re.finditer(r"\\usepackage\s*\[([^\]]*)\]\s*\{[^}]*\b(?:babel|polyglossia)\b[^}]*\}"
                          r"|\\set(?:main|default)language\s*(?:\[[^\]]*\])?\s*\{(\w+)\}", text):
-        words = re.findall(r"[a-z]+", (m.group(1) or m.group(2) or "").lower())
+        options = (m.group(1) or m.group(2) or "").lower()
+        main = re.search(r"\bmain\s*=\s*([a-z]+)", options)
+        words = [main.group(1)] if main else re.findall(r"[a-z]+", options)
         for w in words:
             if w in ("italian", "italiano"):
                 found = "it"
@@ -216,7 +226,7 @@ def tex_headings(main: Path) -> list[dict]:
             text, level = clean_title(arg), levels[name]
         elif name in _GENERATED:
             text, level = _GENERATED[name][index], 1
-        elif name in ("bibliography", "printbibliography"):
+        elif name in _BIBLIOGRAPHY_COMMANDS:
             text, level = _BIBLIOGRAPHY[book_like][index], 1
         else:
             continue

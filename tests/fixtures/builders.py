@@ -544,7 +544,16 @@ _TEX_TABLE = r"""
 """
 
 
-def write_tex_report(folder, *, running_header=False) -> Path:
+def _tex_bibliography(entries: int) -> str:
+    items = "\n".join(
+        f"\\bibitem{{rif{i}}} A.~Autore{i}, \\emph{{Titolo del riferimento numero {i} sulle "
+        f"pipeline di integrazione continua}}, Editore, {2000 + i % 25}."
+        for i in range(1, entries + 1))
+    return f"\\begin{{thebibliography}}{{99}}\n{items}\n\\end{{thebibliography}}\n"
+
+
+def write_tex_report(folder, *, running_header=False, headings_style=False,
+                     bibliography_entries=0) -> Path:
     """A LaTeX internship report with the real draft's page layout; return its main.tex.
 
     report 12pt, TeX Gyre Termes, a 13.2 cm text block with stretch 1.35 (about 76
@@ -553,7 +562,11 @@ def write_tex_report(folder, *, running_header=False) -> Path:
     three chapters in capitoli/01..03.tex: "Introduzione" (2 paragraphs), "Attività svolte"
     (three sections, about 12 pages, with a captioned figure, an equation and a 4-row
     tabular) and "Conclusioni" (2 paragraphs). running_header puts the chapter title in the
-    header too, at the body size and outside the top 7% of the page.
+    header too, at the body size and outside the top 7% of the page. headings_style uses
+    LaTeX's own `\\pagestyle{headings}`: "CAPITOLO 2. ATTIVITÀ SVOLTE" and the page number
+    on one header line (a chapter's first page keeps the number in the footer).
+    bibliography_entries > 0 adds a hand-written `thebibliography` of that many entries
+    after the conclusion.
     """
     folder = Path(folder)
     (folder / "capitoli").mkdir(parents=True, exist_ok=True)
@@ -561,7 +574,14 @@ def write_tex_report(folder, *, running_header=False) -> Path:
     write_png(folder / "immagini" / "fig.png", 400, 220)
     header = "\\fancyhead[C]{\\leftmark}\n" if running_header else ""
     main = folder / "main.tex"
-    main.write_text(_TEX_PREAMBLE.replace("<header>", header) + _TEX_BODY, encoding="utf-8")
+    preamble = _TEX_PREAMBLE.replace("<header>", header)
+    if headings_style:
+        preamble += "\\pagestyle{headings}\n"
+    body = _TEX_BODY
+    if bibliography_entries:
+        body = body.replace("\\include{capitoli/03}\n",
+                            "\\include{capitoli/03}\n" + _tex_bibliography(bibliography_entries))
+    main.write_text(preamble + body, encoding="utf-8")
 
     def paragraphs(n, start=0):
         return "\n\n".join(italian_paragraphs(start + n)[start:])

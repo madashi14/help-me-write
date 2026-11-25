@@ -438,6 +438,12 @@ def test_margin_positions_find_footer_not_last_body_line():
     assert headers == [] and len(footers) == 1 and abs(footers[0] - 771.7) <= 2.0
 
 
+def test_margin_positions_without_a_pitch():
+    pages = [[_line(96.0), _line(96.0), _line(771.7, text="1")]]
+    assert margin_positions(pages, 0.0) == ([], [])
+    assert margin_positions(pages, -1.0) == ([], [])
+
+
 def test_margin_positions_skip_chapter_titles_larger_than_body():
     # 10 pages with a 12 pt footer "N" at 792.8; on 5 of them the first line is a 16 pt
     # chapter title at 75.2, with the text starting 36 pt lower (more than 1.5 pitches)
@@ -537,6 +543,55 @@ def test_running_header_text_is_margin(tmp_path):
     assert checks["page_numbers"].ok and checks["lines_per_page"].ok, \
         (checks["page_numbers"].detail, checks["lines_per_page"].detail)
     assert all(p.line_slots <= 35 for p in m.pages if p.is_full)
+
+
+@needs_xelatex
+def test_headings_pagestyle_page_number_on_the_header_line(tmp_path):
+    """I7: LaTeX's `headings` style puts the section title and the page number on one
+    header line ("2.1. CONTESTO AZIENDALE 3"); a chapter's first page keeps a lone number
+    in the footer. Both are page numbers: no false FAIL of page_numbers."""
+    main = write_tex_report(tmp_path / "rel", headings_style=True)
+    m = measure(main, load_rules(UNIBO), tmp_path / "w")
+    checks = {c.rule: c for c in m.checks}
+    assert checks["page_numbers"].ok, checks["page_numbers"].detail
+    assert checks["lines_per_page"].ok, checks["lines_per_page"].detail
+    header = m.pages[5].text.splitlines()[0]
+    assert header.split()[-1] == "4" and len(header.split()) > 1  # number shares the line
+    assert all(p.has_page_number for p in m.pages[1:])
+
+
+def test_page_number_word_at_the_end_of_a_margin_line():
+    from helpmewrite.measure import _has_page_number
+
+    def words(*items):  # (text, x0, x1)
+        return _line(50.0, text=" ".join(t for t, _, _ in items)), [
+            {"text": t, "x0": a, "x1": b, "top": 50.0, "bottom": 62.0} for t, a, b in items]
+
+    def check(*items):
+        line, ws = words(*items)
+        line.words = ws
+        return _has_page_number(line, 12.0)
+
+    assert check(("CAPITOLO", 100, 160), ("2.", 163, 170), ("ATTIVITÀ", 173, 230), ("5", 480, 486))
+    assert check(("xii", 100, 112), ("INTRODUZIONE", 300, 380))
+    assert not check(("Capitolo", 100, 150), ("2", 153, 159))     # a normal space: no number
+    assert not check(("CAPITOLO", 100, 160), ("ATTIVITÀ", 300, 360))
+    assert check(("12", 290, 302))
+
+
+@needs_xelatex
+def test_thebibliography_is_a_heading_after_the_conclusion(tmp_path):
+    """I8: a hand-written thebibliography after the conclusion is its own section, so the
+    conclusion keeps its own length and chars_per_line skips the bibliography pages."""
+    main = write_tex_report(tmp_path / "rel", bibliography_entries=45)
+    m = measure(main, load_rules(UNIBO), tmp_path / "w")
+    checks = {c.rule: c for c in m.checks}
+    spans = {s.title: s for s in m.sections}
+    assert "Bibliografia" in spans, [s.title for s in m.sections]
+    assert spans["Conclusioni"].end_page < spans["Bibliografia"].start_page
+    assert spans["Bibliografia"].end_page == m.page_count
+    assert checks["section:conclusione:pages"].ok, checks["section:conclusione:pages"].detail
+    assert "bibliography" in checks["chars_per_line"].detail
 
 
 def _one_liners(n, start=0):

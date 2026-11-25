@@ -19,8 +19,11 @@ page numbers and section lengths. Algorithm:
    candidates on at least MARGIN_SHARE of the pages with text is a margin position: a page
    number about 2 cm from the edge (LaTeX) is outside the 7% bands;
 4. margin lines: the lines in the 7% bands, plus the first or last line of a page within
-   MARGIN_TOLERANCE_PT of a header or footer position. A margin line is never a body
-   line; page numbers (_PAGE_NUMBER) are looked for among margin lines only;
+   MARGIN_TOLERANCE_PT of a header or footer position, plus a first or last line that is
+   only a number, more than MARGIN_GAP_PITCHES from the text (a chapter's first page in
+   LaTeX's `headings` style). A margin line is never a body line; page numbers are looked
+   for among margin lines only: the line is the number (_PAGE_NUMBER), or its first or last
+   word is, set apart by more than PROSE_GAP_SIZES body sizes ("CAPITOLO 2. ATTIVITÀ   5");
 5. full page: the line slots around and between its body lines are summed in fractions of
    the pitch, before rounding: above the first body line (from the typical top), inside the
    page (steps wider than the paragraph step plus half a pitch) and below the last one (to
@@ -40,13 +43,16 @@ page numbers and section lengths. Algorithm:
    (three or more). chars_per_full_line is their median, or None with fewer than
    MIN_FULL_LINES of them or when most of the page's full lines are not prose (a table of
    contents whose entries end close to their page numbers, without leader dots).
-Lines per page are checked on full pages (their line slots), characters per line on every
-page with chars_per_full_line, never on page 1 (title page); page numbers are checked on
-every page but page 1. The check details name the pages that were skipped and why; a check
-that can evaluate no page is not ok.
+Lines per page are checked on full pages (their line slots). Characters per line are
+checked on every page with chars_per_full_line, never on page 1 (title page) nor on the
+pages of a bibliography section (Part 2 ruling R6-1: its entries are not prose; the section
+comes from the headings, a hand-written thebibliography included); a table of contents
+has no chars_per_full_line (rule 6: its full lines are not prose). Page numbers are checked
+on every page but page 1. The check details name the pages that were skipped and why; a
+check that can evaluate no page is not ok.
 
-Departures from the plan's algorithm still in force (accepted by the controller, rulings
-R6 and R7):
+Departures from the plan's algorithm still in force (accepted by the controller in Part 1,
+rulings R6 and R7, not to be confused with Part 2's R6-1):
 1. the last page is never full: the text ends there, so a page filled 75-95% would
    otherwise fail lines_per_page;
 2. a heading is located on a page with a line that is the whole title (numbering stripped)
@@ -90,6 +96,7 @@ PARAGRAPH_STEP_SHARE = 0.05  # wider steps this frequent are paragraph spacing, 
 _ROMAN = r"(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})(?<=[ivx])"  # i ... xxxix (front matter)
 _PAGE_NUMBER = re.compile(rf"^\W*(?:\d+|{_ROMAN})\W*$|^(pag\.?|pagina|page)\s*(?:\d+|{_ROMAN}\b)",
                           re.IGNORECASE)
+_PAGE_NUMBER_WORD = re.compile(rf"^(?:\d+|{_ROMAN})$", re.IGNORECASE)
 _LEADER_DOTS = re.compile(r"(?:\.\s?){3,}")
 _SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
 
@@ -269,6 +276,8 @@ def margin_positions(pages: list[list[_Line]], pitch: float,
     def not_larger(line):
         return body_size_pt is None or line.size <= body_size_pt + BODY_SIZE_TOLERANCE_PT
 
+    if pitch <= 0:  # no body lines to measure a pitch on: no position can be told apart
+        return [], []
     headers, footers = [], []
     for lines in pages:
         if not lines:
@@ -281,6 +290,36 @@ def margin_positions(pages: list[list[_Line]], pitch: float,
             footers.append(lines[-1].top)
     with_text = sum(1 for lines in pages if lines)
     return _positions(headers, with_text), _positions(footers, with_text)
+
+
+def _has_page_number(line: _Line, body_size_pt: float | None) -> bool:
+    """A margin line holding the page number: the number alone (or "pag. N"), or as the
+    first or last word of a header or footer with text, set apart from its neighbour by
+    more than PROSE_GAP_SIZES body sizes (LaTeX's `headings` style, a fancyhdr header with
+    \\leftmark and \\thepage). "Capitolo 2", with a normal space, is not a page number."""
+    if _PAGE_NUMBER.match(line.text):
+        return True
+    words = line.words
+    if len(words) < 2 or body_size_pt is None:
+        return False
+    gap = PROSE_GAP_SIZES * body_size_pt
+    return bool((_PAGE_NUMBER_WORD.match(words[0]["text"]) and words[1]["x0"] - words[0]["x1"] > gap)
+                or (_PAGE_NUMBER_WORD.match(words[-1]["text"])
+                    and words[-1]["x0"] - words[-2]["x1"] > gap))
+
+
+def _lone_edge_number(line: _Line, lines: list[_Line], pitch: float) -> bool:
+    """The first or last line of a page, only a page number, set apart from the text by
+    more than MARGIN_GAP_PITCHES: a page number even where its position is not shared by
+    enough pages (a chapter's first page in LaTeX's `headings` style)."""
+    if pitch <= 0 or len(lines) < 2 or not _PAGE_NUMBER.match(line.text) \
+            or not _PAGE_NUMBER_WORD.match(line.text.strip()):
+        return False
+    if line is lines[0]:
+        return lines[1].top - line.top > MARGIN_GAP_PITCHES * pitch
+    if line is lines[-1]:
+        return line.top - lines[-2].top > MARGIN_GAP_PITCHES * pitch
+    return False
 
 
 def typical_bounds(pages: list[list[_Line]]) -> tuple[float, float]:
@@ -369,7 +408,7 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
         def near(positions):
             return any(abs(line.top - p) <= MARGIN_TOLERANCE_PT for p in positions)
         return (_in_band(line, height) or (line is lines[0] and near(headers))
-                or (line is lines[-1] and near(footers)))
+                or (line is lines[-1] and near(footers)) or _lone_edge_number(line, lines, pitch))
 
     margin, body, others = [], [], []  # per page: margin lines, body lines, the other lines
     for height, lines in raw:
@@ -405,7 +444,7 @@ def measure_pdf(pdf, body_size_pt: float | None = None) -> list[PageStats]:
             chars_per_full_line=_chars_per_full_line(body_lines, reference, body_size_pt),
             font_chars=dict(fonts),
             body_size_pt=body_size_pt if body_lines else None,
-            has_page_number=any(_PAGE_NUMBER.match(line.text) for line in edge),
+            has_page_number=any(_has_page_number(line, body_size_pt) for line in edge),
             is_full=full,
             text="\n".join(line.text for line in lines),
         ))
