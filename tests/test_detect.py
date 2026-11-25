@@ -72,3 +72,37 @@ def test_detect_survives_corrupt_docx(tmp_path):
     d = {x["path"]: x for x in detect(tmp_path)["drafts"]}
     assert d["Relazione buona.docx"]["words"] == 2
     assert d["Relazione rotta.docx"]["words"] is None
+
+
+def test_skip_dir_is_the_shared_rule():
+    """R-F2: one public rule for detect, material, format's copy and bib's source search."""
+    from helpmewrite.detect import skip_dir
+
+    for name in [".git", ".help-me-write", "node_modules", "__pycache__", "Relazione-help-me-write",
+                 "Relazione-v2-help-me-write", "Relazione-help-me-write-revisionato",
+                 "Relazione-help-me-write-revisionato-2", "bozza-revisionato",
+                 "Tesi-Revisionato-3", "x-help-me-write-v2"]:
+        assert skip_dir(name), name
+    for name in ["capitoli", "help-me-write", "dati", "revisioni", "Relazione"]:
+        assert not skip_dir(name), name
+
+
+def test_detect_skips_writing_flow_outputs(tmp_path):
+    """Task 12 minor: a PDF of differences or of a copy is never a PDF draft."""
+    _w(tmp_path / "Relazione" / "main.tex", "\\documentclass{report}\n\\begin{document}\n"
+       "Testo.\n\\end{document}\n")
+    for name in ["Relazione-v2-differenze.pdf", "Relazione-help-me-write-differenze.pdf",
+                 "Relazione-help-me-write-differenze-2.pdf", "bozza-revisionato.pdf",
+                 "bozza-formattato.pdf", "Relazione-v3-help-me-write/main.pdf",
+                 "Relazione-help-me-write-revisionato/main.pdf"]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_bytes(b"%PDF-1.4 stub")
+    (tmp_path / "relazione-finale.pdf").write_bytes(b"%PDF-1.4 stub")
+    for name in ["bozza-revisionato-2.docx", "bozza-help-me-write-v2.docx"]:
+        _docx(tmp_path / name, "copia")
+    d = detect(tmp_path)
+    assert {"bozza-revisionato-2.docx", "bozza-help-me-write-v2.docx"} <= set(d["ignored"])
+    assert [x["path"] for x in d["drafts"]] == ["Relazione/main.tex", "relazione-finale.pdf"]
+    for name in ["Relazione-v2-differenze.pdf", "Relazione-help-me-write-differenze.pdf",
+                 "bozza-revisionato.pdf", "bozza-formattato.pdf"]:
+        assert name in d["ignored"], name

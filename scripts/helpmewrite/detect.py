@@ -5,7 +5,9 @@ from pathlib import Path
 
 SKIP_DIRS = {".git", ".help-me-write", "__pycache__", "node_modules", ".venv", "venv",
              ".ipynb_checkpoints"}
-SKIP_SUFFIXES = ("-revisionato", "-help-me-write")
+# help-me-write's own outputs: working copies (`<name>-help-me-write`, `<name>-v2-help-me-write`)
+# and corrected copies (`<name>-revisionato`, `<name>-help-me-write-revisionato-2`)
+OUTPUT_MARKS = ("-help-me-write", "-revisionato")
 GUIDELINE_WORDS = ("linee guida", "linee-guida", "linee_guida", "lineeguida", "regolamento",
                    "norme", "facsimile", "modello", "template", "bando", "guidelines")
 DRAFT_WORDS = ("relazione", "report", "bozza", "draft", "tesi", "capitolo")
@@ -16,8 +18,27 @@ _COMMENT = re.compile(r"(?<!\\)%.*")
 _HEADING = re.compile(r"\\(?:chapter|section)\*?(?:\[[^\]]*\])?\{(?:[^{}]|\{[^{}]*\})*\}")
 
 
-def _skip_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name.lower().endswith(SKIP_SUFFIXES)
+def is_output_name(name: str) -> bool:
+    """True for a file or folder name of help-me-write's outputs (`*-help-me-write*`,
+    `*-revisionato*`)."""
+    low = name.lower()
+    return any(mark in low for mark in OUTPUT_MARKS)
+
+
+def skip_dir(name: str) -> bool:
+    """The shared skip rule: True for a folder that no scan enters and no copy takes.
+
+    Used by detect, material, the copies of `format` and `track` (.tex) and the source
+    search of `bib`: tool and cache folders, the state folder `.help-me-write` and every
+    help-me-write output folder (`*-help-me-write*`, `*-revisionato*`)."""
+    return name in SKIP_DIRS or is_output_name(name)
+
+
+def is_output_pdf(name: str) -> bool:
+    """True for a PDF help-me-write writes: in an output's name, or a PDF of differences
+    (`*-differenze.pdf`, `*-differenze-<N>.pdf`), or a copy (`-revisionato`, `-formattato`)."""
+    stem = Path(name).stem.lower()
+    return is_output_name(stem) or bool(re.search(r"-(?:differenze|formattato)(?:-\d+)?$", stem))
 
 
 def _is_guideline(name: str) -> bool:
@@ -56,7 +77,7 @@ def detect(work) -> dict:
     work = Path(work)
     drafts, guidelines, ignored = [], [], []
     for root, dirs, files in os.walk(work):
-        dirs[:] = sorted(d for d in dirs if not _skip_dir(d))
+        dirs[:] = sorted(d for d in dirs if not skip_dir(d))
         for name in sorted(files):
             path = Path(root) / name
             rel = path.relative_to(work).as_posix()
@@ -66,7 +87,7 @@ def detect(work) -> dict:
             elif suffix in GUIDELINE_EXT and _is_guideline(name):
                 guidelines.append(rel)
             elif suffix == ".docx":
-                if path.stem.lower().endswith(COPY_SUFFIXES):
+                if path.stem.lower().endswith(COPY_SUFFIXES) or is_output_name(path.stem):
                     ignored.append(rel)
                 else:
                     drafts.append((rel, "word", path))
@@ -77,7 +98,10 @@ def detect(work) -> dict:
                 if any(w in name.lower() for w in DRAFT_WORDS):
                     drafts.append((rel, "markdown" if suffix == ".md" else "text", path))
             elif suffix == ".pdf":
-                drafts.append((rel, "pdf", path))
+                if is_output_pdf(name):  # a PDF of differences or of a copy is no draft
+                    ignored.append(rel)
+                else:
+                    drafts.append((rel, "pdf", path))
     stems = {Path(rel).stem.lower() for rel, fmt, _ in drafts if fmt != "pdf"}
     result = []
     for rel, fmt, path in drafts:

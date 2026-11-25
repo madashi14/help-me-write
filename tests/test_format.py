@@ -499,6 +499,99 @@ def test_format_tex_refuses_output_inside_project(tmp_path):
     assert _tree_hash(tmp_path / "src") == before and not (tmp_path / "src" / "copia").exists()
 
 
+def test_format_tex_copy_skips_state_git_and_outputs(tmp_path):
+    """M4 / R-F2: the copy takes neither .help-me-write/, .git nor help-me-write's outputs."""
+    main = _tex_project(tmp_path / "src")
+    for name in [".help-me-write/progetto.md", ".git/HEAD", "src-help-me-write-revisionato/main.tex",
+                 "bozza-revisionato/main.tex", "node_modules/x.js"]:
+        (tmp_path / "src" / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "src" / name).write_text("x", encoding="utf-8")
+    (tmp_path / "src" / "note-revisionato.txt").write_text("a file, not a folder", encoding="utf-8")
+    assert cli.main(["format", str(main), "-o", str(tmp_path / "out")]) == 0
+    out = tmp_path / "out"
+    names = {p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()}
+    assert names == {"main.tex", "capitoli/uno.tex", "immagini/a.png", "immagini/grafico.pdf",
+                     "note-revisionato.txt"}
+
+
+def test_format_and_track_tex_copy_inside_the_named_folder(tmp_path, capsys):
+    """R-F1 / I1: main.tex at the root of the folder the user named. The working copy lives
+    inside it, at the top level, as <project>-help-me-write; it never copies itself, and
+    any other nested output is still refused."""
+    work = tmp_path / "tirocinio"
+    main = _tex_project(work)
+    (work / ".help-me-write").mkdir()
+    (work / ".help-me-write" / "progetto.md").write_text("---\nmode: x\n---\n", encoding="utf-8")
+    (work / "dati").mkdir()
+    (work / "dati" / "misure.csv").write_text("a;b\n1;2\n", encoding="utf-8")
+    before = _tree_hash(work)
+    copy = work / "tirocinio-help-me-write"
+    assert cli.main(["format", str(main), "--layout", str(_layout_file(tmp_path)),
+                     "-o", str(copy)]) == 0
+    names = {p.relative_to(copy).as_posix() for p in copy.rglob("*") if p.is_file()}
+    assert names == {"main.tex", "capitoli/uno.tex", "immagini/a.png", "immagini/grafico.pdf",
+                     "dati/misure.csv"}
+    assert {p.name for p in work.iterdir() if p.name.startswith(".hmw-")} == set()
+    after = _tree_hash(work)
+    assert {k: v for k, v in after.items() if not k.startswith("tirocinio-help-me-write")} == before
+    # detect and material, run on the named folder, never take the copy for the draft
+    from helpmewrite.detect import detect
+    from helpmewrite.materiale import inventory
+
+    drafts = [d["path"] for d in detect(work)["drafts"]]
+    assert "main.tex" in drafts and not any("help-me-write" in d for d in drafts)
+    assert not any("help-me-write" in f["path"] for f in inventory(work)["files"])
+    # a second copy beside the first (e.g. a plain copy of the draft) never takes the first
+    assert cli.main(["format", str(main), "-o", str(work / "tirocinio-help-me-write-2")]) == 0
+    assert not (work / "tirocinio-help-me-write-2" / "tirocinio-help-me-write").exists()
+    # track (.tex) on the draft itself, into the project folder
+    edits = tmp_path / "e.json"
+    edits.write_text(json.dumps({"author": "help-me-write", "edits": [
+        {"file": "capitoli/uno.tex", "line": 2, "find": "Testo.", "replace": "Testo corretto.",
+         "reason": "r", "by": "revisore"}]}), encoding="utf-8")
+    out = work / "tirocinio-help-me-write-revisionato"
+    assert cli.main(["track", str(main), "--edits", str(edits), "-o", str(out)]) == 0
+    assert (out / "capitoli" / "uno.tex").read_text(encoding="utf-8") == "\\chapter{Uno}\nTesto corretto.\n"
+    assert not any(p.name.endswith(("help-me-write", "help-me-write-2")) for p in out.iterdir())
+    assert not (out / ".help-me-write").exists()
+    capsys.readouterr()
+    # any other output inside the project is still refused, nested or wrongly named
+    for bad in [work / "copia", work / "capitoli" / "tirocinio-help-me-write",
+                work / "altro-help-me-write"]:
+        assert cli.main(["format", str(main), "-o", str(bad)]) == 2, bad
+        assert "inside the source folder" in capsys.readouterr().err
+        assert not bad.exists()
+        assert cli.main(["track", str(main), "--edits", str(edits), "-o", str(bad)]) == 2, bad
+        assert not bad.exists()
+
+
+def test_format_and_track_create_the_output_folder(tmp_path, capsys):
+    """I4: the Word partial-draft flow writes into <work>/<output>/ before anything made it."""
+    src = write_docx(tmp_path / "bozza.docx", ["Testo con un errorre."])
+    out = tmp_path / "lavoro" / "bozza-help-me-write" / "bozza.docx"
+    assert cli.main(["format", str(src), "--layout", str(_layout_file(tmp_path)),
+                     "-o", str(out)]) == 0
+    assert out.is_file()
+    edits = tmp_path / "e.json"
+    edits.write_text(json.dumps({"author": "help-me-write", "edits": [
+        {"paragraph": 0, "find": "errorre", "replace": "errore", "reason": "r",
+         "by": "revisore"}]}), encoding="utf-8")
+    tracked = tmp_path / "nuova" / "sotto" / "x.docx"
+    assert cli.main(["track", str(src), "--edits", str(edits), "-o", str(tracked)]) == 0
+    assert tracked.is_file()
+    # an output that cannot be written is named in the error, not the input
+    (tmp_path / "file").write_text("x", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["format", str(src), "--layout", str(_layout_file(tmp_path)),
+                     "-o", str(tmp_path / "file" / "y.docx")]) == 2
+    err = capsys.readouterr().err
+    assert "y.docx" in err and "Traceback" not in err
+    assert cli.main(["track", str(src), "--edits", str(edits),
+                     "-o", str(tmp_path / "file" / "z.docx")]) == 2
+    err = capsys.readouterr().err
+    assert "z.docx" in err and "Traceback" not in err
+
+
 def test_format_docx_still_needs_layout(tmp_path):
     src = write_docx(tmp_path / "in.docx", ["x"])
     assert cli.main(["format", str(src), "-o", str(tmp_path / "o.docx")]) == 2

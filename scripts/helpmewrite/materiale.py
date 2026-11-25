@@ -62,7 +62,7 @@ MAX_REPOS = 20
 
 
 def _skip(name: str) -> bool:
-    return detect._skip_dir(name) or name in EXTRA_SKIP_DIRS
+    return detect.skip_dir(name) or name in EXTRA_SKIP_DIRS
 
 
 # --- zip ----------------------------------------------------------------------------------

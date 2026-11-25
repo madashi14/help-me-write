@@ -256,6 +256,43 @@ def test_the_documents_own_pdfs_are_never_sources(tmp_path, monkeypatch):
                      "bozza.pdf"]
 
 
+@pytest.mark.parametrize("document", ["main.tex", None])
+def test_writing_flow_outputs_are_never_sources(tmp_path, monkeypatch, document):
+    """I5 / R-F2: inside <work>, help-me-write's own outputs (working copies, corrected
+    copies, PDFs of differences, figure PDFs of a copy) are never sources; nothing in the
+    skipped tool folders is read either."""
+    from helpmewrite import bib
+
+    work = tmp_path / "lavoro"
+    own = ["Relazione_Tirocinio-v2-differenze.pdf", "Relazione_Tirocinio-v3-differenze-2.pdf",
+           "Relazione_Tirocinio-help-me-write-differenze.pdf",
+           "Relazione_Tirocinio-help-me-write/immagini/grafico.pdf",
+           "Relazione_Tirocinio-v2-help-me-write/main.pdf",
+           "Altro-help-me-write-revisionato/x.pdf", "Relazione_Tirocinio-help-me-write-revisionato-2/main.pdf"]
+    silent = [".git/objects/a.pdf", "node_modules/pkg/doc.pdf",
+              ".help-me-write/revisioni/2026-11-25-120000/differenze.pdf"]
+    for name in own + silent + ["fonti/rossi2021.pdf"]:
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
+        (work / name).write_bytes(b"%PDF-1.4 stub")
+    read = []
+
+    def fake(pdf, max_pages=None):
+        read.append(Path(pdf).relative_to(work).as_posix())
+        return ["Tempi di build nelle pipeline"]
+
+    monkeypatch.setattr(bib, "pdf_pages_text", fake)
+    for name in own:
+        assert bib._own_pdf(work / name, work, None if document is None else work / document), name
+    assert not bib._own_pdf(work / "fonti" / "rossi2021.pdf", work, None)
+    entries = [BibEntry("[1]", "r", "Tempi di build nelle pipeline", [], "2021", None, None, 3)]
+    excluded = []
+    doc = None if document is None else work / "Relazione_Tirocinio" / document
+    found = find_local_sources(work, entries, document=doc, excluded=excluded)
+    assert found == {"[1]": str(work / "fonti" / "rossi2021.pdf")}
+    assert read == ["fonti/rossi2021.pdf"]
+    assert sorted(Path(p).relative_to(work).as_posix() for p in excluded) == sorted(own)
+
+
 def test_unrelated_differenze_pdf_is_a_source(tmp_path, monkeypatch):
     work = _sources_folder(tmp_path, monkeypatch)
     (work / "Confronto-differenze.pdf").write_bytes(b"%PDF-1.4 stub")

@@ -3,13 +3,14 @@
 Citation `paragraph` ids are the ids `extract` produces (docx: index in
 iter_body_paragraphs; tex: paragraph id, with file and line from extract_tex).
 """
+import os
 import re
 import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import cli
+from . import cli, detect
 from .extract import extract
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
@@ -476,42 +477,55 @@ def pdf_page_range_text(pdf: Path, first: int = 1, last: int | None = None):
 
 
 _DIFF_PDF = re.compile(r"-differenze(?:-\d+)?$", re.IGNORECASE)
+_FLOW_DIFF_PDF = re.compile(r"-v\d+-differenze(?:-\d+)?$", re.IGNORECASE)
 _COPY_SUFFIX = re.compile(r"^(?:-revisionato|-formattato)", re.IGNORECASE)
 
 
 def _own_pdf(pdf: Path, folder: Path, document: Path | None) -> bool:
-    """True for a PDF of the reviewed document itself, never a source of its own claims: the
-    document, a PDF named like it (also `-revisionato`, `-formattato` copies), its
-    `<name>-differenze.pdf`, or anything in a `-revisionato` folder named after the document
-    or its project folder. Without a known document, any `*-differenze.pdf` and any
-    `*-revisionato*` folder count."""
+    """True for a PDF of the reviewed document itself, never a source of its own claims.
+
+    - Anything help-me-write wrote: a PDF inside one of its output folders (`*-help-me-write*`,
+      `*-revisionato*`, the shared skip rule `detect.skip_dir`), a PDF whose name carries
+      those marks (`<project>-help-me-write-differenze.pdf`) and a PDF of differences of
+      the writing flow (`<base>-v<N>-differenze.pdf`).
+    - The document, a PDF named like it (also `-revisionato`, `-formattato` copies) and its
+      `<name>-differenze.pdf`. Without a known document, any `*-differenze.pdf` counts."""
     parts = pdf.relative_to(folder).parts
-    revisioned = [part.casefold() for part in parts[:-1] if "-revisionato" in part.lower()]
-    if document is None:
-        return bool(revisioned) or bool(_DIFF_PDF.search(pdf.stem))
-    stem, own = pdf.stem.casefold(), Path(document).stem.casefold()
-    names = {own, folder.name.casefold()} - {""}
-    if any(part.startswith(n) for part in revisioned for n in names):
+    if any(detect.is_output_name(part) for part in parts[:-1]):
         return True
+    if detect.is_output_name(pdf.stem) or _FLOW_DIFF_PDF.search(pdf.stem):
+        return True
+    if document is None:
+        return bool(_DIFF_PDF.search(pdf.stem))
+    stem, own = pdf.stem.casefold(), Path(document).stem.casefold()
     diff = _DIFF_PDF.search(stem)
     if diff and stem[:diff.start()] == own:
         return True
     return stem == own or (stem.startswith(own) and bool(_COPY_SUFFIX.match(stem[len(own):])))
 
 
+def _pdfs_under(folder: Path) -> list[Path]:
+    """Every PDF under folder, sorted. The folders of the shared skip rule are not entered,
+    except help-me-write's output folders, whose PDFs _own_pdf then excludes by name."""
+    pdfs = []
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = [d for d in dirs if detect.is_output_name(d) or not detect.skip_dir(d)]
+        pdfs += [Path(root) / name for name in files if name.lower().endswith(".pdf")]
+    return sorted(pdfs)
+
+
 def find_local_sources(folder: Path, entries: list[BibEntry],
                        skipped: list[str] | None = None, document: Path | None = None,
                        excluded: list[str] | None = None) -> dict[str, str]:
     """Map entry key -> PDF path found under folder (recursive). Broken or oversized PDFs
-    are skipped (their paths are appended to `skipped` if given). `.help-me-write/` and
-    the document's own PDFs (see _own_pdf; appended to `excluded` if given) are never
+    are skipped (their paths are appended to `skipped` if given). The folders of the shared
+    skip rule (`.help-me-write`, `.git`, ...) are not searched, and help-me-write's outputs
+    and the document's own PDFs (see _own_pdf; appended to `excluded` if given) are never
     sources."""
     folder = Path(folder)
     found: dict[str, str] = {}
     candidates = [e for e in entries if e.doi or (e.title and _words(e.title))]
-    for pdf in sorted(p for p in folder.rglob("*") if p.suffix.lower() == ".pdf"):
-        if ".help-me-write" in pdf.relative_to(folder).parts:
-            continue
+    for pdf in _pdfs_under(folder):
         if _own_pdf(pdf, folder, document):
             if excluded is not None:
                 excluded.append(str(pdf))

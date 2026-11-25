@@ -514,15 +514,17 @@ def _layout_block(layout: Layout, preamble: str, size: int) -> str:
 def apply_layout_tex(main: Path, layout: Layout | None, out_dir: Path) -> list[str]:
     """Copy the project of main to out_dir and put the layout block before \\begin{document}.
 
-    Without a layout the copy is plain. Returns the changes made and the warnings. Raises
-    EditsError for an unusable out_dir (nested in or containing the project, or not empty)
-    and LayoutError when main has no \\begin{document}.
+    Without a layout the copy is plain. The copy leaves out build artefacts and the folders
+    of the shared skip rule (`.git`, `.help-me-write`, other help-me-write outputs). Returns
+    the changes made and the warnings. Raises EditsError for an unusable out_dir (nested in
+    the project, except a top-level `<project>-help-me-write…` folder; containing the
+    project; or not empty) and LayoutError when main has no \\begin{document}.
     """
     import shutil
     import tempfile
 
     from .extract import read_tex_text
-    from .track_tex import _prepare_out_dir
+    from .track_tex import _prepare_out_dir, copy_ignore
 
     main = Path(main)
     if not main.is_file():
@@ -533,8 +535,10 @@ def apply_layout_tex(main: Path, layout: Layout | None, out_dir: Path) -> list[s
     if layout is not None and begin is None:
         raise LayoutError(f"no \\begin{{document}} in {main.name}: pass the main file of the project")
 
+    base_ignore = copy_ignore(*_COPY_IGNORED)
+
     def ignore(folder, names):
-        skipped = {n for pat in _COPY_IGNORED for n in names if Path(n).match(pat)}
+        skipped = set(base_ignore(folder, names))
         if Path(folder).resolve() == main.parent.resolve():
             skipped.add(main.with_suffix(".pdf").name)
         return skipped
@@ -618,15 +622,22 @@ def run_format(args) -> int:
         return 2
     try:
         layout = load_layout(args.layout)
-        changes = apply_layout(args.input, layout, args.output)
     except LayoutError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except ValueError as exc:
+    try:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"error: cannot create the folder of {args.output}: {exc.strerror or exc}",
+              file=sys.stderr)
+        return 2
+    try:
+        changes = apply_layout(args.input, layout, args.output)
+    except (LayoutError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # unreadable/not a docx, unwritable destination
-        print(f"error: cannot format {args.input}: {exc!r}", file=sys.stderr)
+        print(f"error: cannot format {args.input} into {args.output}: {exc!r}", file=sys.stderr)
         return 2
     cli.emit({"output": str(args.output), "changes": changes}, _no_json_file(args),
              text="\n".join([f"wrote {args.output}"] + [f"- {c}" for c in changes]))

@@ -240,6 +240,10 @@ def run_track(args) -> int:
     from .extract import extract_tex, iter_body_paragraphs, visible_text
 
     try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return _error(f"cannot create the folder of {output}: {exc.strerror or exc}")
+    try:
         if suffix == ".tex":
             texts = {(p["file"], p["line"]): p["text"] for p in extract_tex(source)}
             merged, conflicts = merge_edits(*sets, texts=texts)
@@ -254,7 +258,7 @@ def run_track(args) -> int:
     except EditsError as exc:
         return _error("; ".join(exc.problems))
     except Exception as exc:  # unreadable/not a docx, unwritable destination
-        return _error(f"cannot apply edits to {source.name}: {exc!r}")
+        return _error(f"cannot apply edits to {source.name} into {output}: {exc!r}")
     failed = [dict(f, edit=edit_to_dict(merged.edits[f["index"]])) for f in result.failed]
     data = {"applied": result.applied, "failed": failed, "conflicts": conflicts}
     if result.notes:
