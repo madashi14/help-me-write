@@ -34,6 +34,7 @@ _COMMANDS = {
     "doctor": ("doctor", "add_arguments", "run", True, ()),
     "extract": ("extract", "add_arguments", "run", True, ("lxml", "docx", "pdfplumber")),
     "format": ("layout", "add_format_arguments", "run_format", False, ("lxml", "docx")),
+    "latex-init": ("latexproj", "add_arguments", "run", False, ()),
     "layout": ("layout", "add_arguments", "run", True, ("yaml",)),
     "material": ("materiale", "add_material_arguments", "run_material", True, ()),
     "measure": ("measure", "add_arguments", "run", True,

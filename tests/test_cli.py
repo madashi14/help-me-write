@@ -132,6 +132,7 @@ def test_parser_builds_every_command():
                 "bib": ["x.docx"], "chart": ["s.json", "-o", "g.png"],
                 "diagram": ["d.json", "-o", "d.png"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
                 "format": ["x.docx", "--layout", "l.json", "-o", "y.docx"],
+                "latex-init": ["p", "--layout", "l.json", "--chapters", "c.json"],
                 "layout": ["--rules", "r.yaml", "--font", "Times"],
                 "material": ["w"], "notebook": ["n.ipynb", "-o", "n.md"],
                 "measure": ["x.docx", "--rules", "r.yaml"], "pdftext": ["x.pdf"],
