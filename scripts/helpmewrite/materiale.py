@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import zipfile
+import zlib
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -77,7 +78,7 @@ def _unsafe_name(name: str) -> str | None:
 def _extractable(name: str) -> bool:
     kind, ext = kind_of(name), _ext(name)
     return (kind in _EXTRACT_KINDS or (kind == "data" and ext in _TEXT_DATA)
-            or (kind == "document" and ext in _TEXT_DOC) or ext == ".txt")
+            or (kind == "document" and ext in _TEXT_DOC))
 
 
 def _zip_date(info) -> str | None:
@@ -111,7 +112,7 @@ def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
     entry = {"path": rel, "opened": False}
     try:
         zf = zipfile.ZipFile(path)
-    except (zipfile.BadZipFile, OSError) as exc:
+    except (zipfile.BadZipFile, OSError, EOFError, zlib.error) as exc:
         entry["error"] = f"cannot open: {exc}"
         return entry
     with zf:
@@ -161,7 +162,10 @@ def _read_zip(path: Path, rel: str, extract_dir: Path | None) -> dict:
             try:
                 size = _copy_member(zf, info, target,
                                     min(MAX_MEMBER_BYTES, MAX_EXTRACT_BYTES - used))
-            except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+            except (zipfile.BadZipFile, EOFError, zlib.error) as exc:
+                skipped.append({"name": name, "reason": f"corrupt member: {exc}"})
+                continue
+            except (OSError, RuntimeError, NotImplementedError) as exc:
                 skipped.append({"name": name, "reason": f"cannot extract: {exc}"})
                 continue
             if size is None:

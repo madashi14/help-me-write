@@ -106,6 +106,34 @@ def test_material_zip_hostile_members(tmp_path, monkeypatch):
         assert skipped.get(name), name
 
 
+def test_material_zip_corrupt_member(tmp_path, capsys):
+    work = tmp_path / "w"
+    work.mkdir()
+    with zipfile.ZipFile(work / "c.zip", "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bad.py", bytes(range(256)) * 40)
+        zf.writestr("good.py", b"print(1)\n" * 50)
+        offset = zf.getinfo("bad.py").header_offset + 30 + len("bad.py")
+    raw = bytearray((work / "c.zip").read_bytes())
+    for i in range(offset + 5, offset + 25):
+        raw[i] ^= 0xFF
+    (work / "c.zip").write_bytes(bytes(raw))
+    assert main(["material", str(work), "--extract", str(tmp_path / "e")]) == 0
+    arc = inventory(work, tmp_path / "e2")["archives"][0]
+    assert [e["name"] for e in arc["extracted"]] == ["good.py"]
+    assert [s["name"] for s in arc["skipped"]] == ["bad.py"]
+    assert arc["skipped"][0]["reason"].startswith("corrupt member")
+    assert not (tmp_path / "e2" / "c" / "bad.py").exists()
+
+
+def test_material_zip_backslash_members(tmp_path):
+    work = tmp_path / "w"
+    _zip(work / "b.zip", {"..\\x.py": b"1", "C:\\x.py": b"1", "\\abs.py": b"1"})
+    before = _all_files(tmp_path)
+    arc = inventory(work, tmp_path / "e")["archives"][0]
+    assert _all_files(tmp_path) == before
+    assert len(arc["skipped"]) == 3 and not arc["extracted"]
+
+
 def test_material_total_extract_limit(tmp_path, monkeypatch):
     work = tmp_path / "w"
     monkeypatch.setattr(materiale, "MAX_EXTRACT_BYTES", 15)
