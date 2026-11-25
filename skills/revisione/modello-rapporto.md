@@ -69,8 +69,9 @@ tables, terms.>
 - **Summary.** Paths relative to the work folder. The main problems come first from
   content and the rules of the guidelines, then form, then language.
 - **Form.** One row per check of `measure.json`, in its order. Rule: a readable name and
-  the check id. Outcome: ✓ or ✗ (or "not checked" with the reason when the detail says
-  it could not be evaluated). Detail: the measured value against the allowed one, in the
+  the check id exactly as `measure.json` writes it, in backticks (`section:indice:present`).
+  Outcome: ✓ when `ok` is true, ✗ when it is false (with "not checked" and the reason
+  when the detail says it could not be evaluated). Detail: the measured value against the allowed one, in the
   user's language. Recommended settings, for a failed check:
   - font, size, lines per page, characters per line: from `layout.json` (font and size,
     margins in cm, exact line spacing = the line pitch in pt, paragraph spacing 0);

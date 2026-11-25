@@ -11,8 +11,10 @@ from helpmewrite.extract import extract_docx
 from helpmewrite.measure import measure
 from helpmewrite.rules import load_rules
 
+FORM_DEFECTS = {"font": "font_family", "chars_per_line": "chars_per_line",
+                "no_index": "section:indice:present",
+                "intro_length": "section:introduzione:pages"}
 DEFECTS = {
-    "font", "chars_per_line", "no_index", "intro_length",
     "typo_installaizone", "typo_e_stato", "typo_perche", "typo_qual_e", "typo_un_altro",
     "acronym_ci_cd", "figure_not_cited", "personal_contribution", "credential",
 }
@@ -41,16 +43,22 @@ def _chapter(paragraphs, title):
     return paragraphs[start + 1:end]
 
 
-def test_expected_names_every_defect_with_keywords(draft):
+def test_expected_names_every_defect(draft):
     path, expected = draft
+    assert expected["form_defects"] == FORM_DEFECTS   # id -> measure check marked failed
     assert set(expected["defects"]) == DEFECTS
-    for defect, keywords in expected["defects"].items():
+    for defect, spec in expected["defects"].items():
+        keywords = spec["keywords"]
         assert keywords and all(k and k == k.lower() for k in keywords), defect
+        assert set(spec) <= {"keywords", "section"}
+    # keywords that a report following the template contains anyway do not count
+    assert expected["defects"]["personal_contribution"] == {
+        "keywords": ["passiv", "impersonal", "prima persona", "first person"],
+        "section": ["contenuto", "content"]}
     assert expected["document"] == "bozza.docx" and expected["revised"] == "bozza-revisionato.docx"
     assert expected["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert expected["min_insertions"] >= 5 and "installazione" in expected["visible_text"]
-    assert set(expected["failed_checks"]) >= {"font_family", "chars_per_line",
-                                              "section:introduzione:pages"}
+    assert expected["secret"] == "Alfa2024!"
 
 
 def test_typos_occur_once_each(paragraphs):
@@ -99,7 +107,7 @@ def test_measure_flags_the_form_defects(draft, tmp_path):
     path, expected = draft
     m = measure(path, load_rules(FIX / "linee-guida-unibo.yaml"), tmp_path / "w")
     by = {c.rule: c for c in m.checks}
-    for rule in expected["failed_checks"]:
+    for rule in expected["form_defects"].values():
         assert not by[rule].ok, (rule, by[rule].detail)
     # about 12 pages, 4 of introduction, 85 characters per line (12, 4 and 85 with Carlito,
     # the metric clone of Calibri; a machine without it renders with another font)

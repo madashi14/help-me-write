@@ -63,8 +63,9 @@ cannot correct from the document itself becomes a question.
 4. **Bibliography reviewer, in parallel.** When the profile has a `## Citation needs`
    section, or the document has citations or a bibliography section, also run the
    `revisione-bibliografia` skill (folder ../revisione-bibliografia/ from this skill's
-   folder) with `<rev>` as its work folder, up to the dispatch of its reviewer with its
-   own prompt, without its own track and report steps: it writes `<rev>/bib.json`,
+   folder) with `<work>` as its work folder (where it looks for the sources) and `<rev>`
+   for its outputs, up to the dispatch of its reviewer with its own prompt, without its
+   own track and report steps: it writes `<rev>/bib.json`,
    `<rev>/edits-bibliografia.json` and `<rev>/note-bibliografia.md`. Dispatch its reviewer
    at the same time as the one of step 5, not after it. If that skill is not installed,
    skip it: the report's bibliography section then says "not run".
@@ -104,13 +105,24 @@ cannot correct from the document itself becomes a question.
 10. **Tell the user.** Show the report's summary and its questions, with the paths of the
     copies and of `rapporto.md`. Changes in the copy are accepted or rejected in Word or
     LibreOffice.
-11. **Answers: at most two cycles.** When the user answers the questions, start a new
-    `<rev>`: write the answers, verbatim, to `<rev>/risposte.md`; extract the latest
-    corrected copy to `<rev>/extract.json`; run step 5 again on that extract with
-    `{ANSWERS}` = the path of `risposte.md` (the reviewer then writes only the edits that
-    bring the answers into the text); apply them with `track` to the latest copy, under
-    the next free name; then steps 7–10, reporting only the new changes. After two such
-    cycles, stop and let the user decide what to do next.
+11. **Answers: at most two cycles.** When the user answers the questions, run a cycle
+    (spec §6.3: apply the corrections, measure again):
+    1. Start a new `<rev>` and write the answers, verbatim, to `<rev>/risposte.md`.
+    2. `<last>` is the newest corrected copy, `<name>-revisionato.docx` or
+       `<name>-revisionato-<N>.docx` with the highest N (for LaTeX the main `.tex` in
+       the newest `-revisionato` folder), never a `-formattato` copy.
+    3. Run step 3 on `<last>` into the new `<rev>` (`extract.json`, `measure.json`), and
+       copy the previous `<rev>/layout.json` there if there is one, without asking for
+       the font again.
+    4. Step 5 with these `extract.json` and `measure.json` and `{ANSWERS}` = the path of
+       `risposte.md`: the reviewer writes only the edits that bring the answers into the
+       text.
+    5. Step 6 with `track` on `<last>`, output under the next free name; then step 7;
+       step 8 on the new copy with the copied `layout.json`, so the formatted copy has
+       this cycle's edits too.
+    6. Steps 9–10, reporting the new changes and the new measures.
+
+    After two cycles, stop and let the user decide what to do next.
 
 ## PDF drafts
 

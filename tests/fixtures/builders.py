@@ -191,9 +191,10 @@ def build_flawed_draft(folder) -> dict:
     and a password in a paragraph. The side margins are 4 cm: Calibri 11 between 1.5 cm
     margins would give about 117 characters per line, not the 85 of the spec.
 
-    The result: the draft's name, its sha256, the expected revised copy, the measure
-    checks that must fail and, per defect id, keywords (lowercase) of which at least one
-    must appear in the review report.
+    The result: the draft's name, its sha256, the expected revised copy, the secret, the
+    form defects (id -> the measure check the report must mark failed) and, for the other
+    defects, keywords (lowercase) of which at least one must appear in the review report.
+    tests/scenari/check_revisione.py reads it.
     """
     import hashlib
 
@@ -232,24 +233,29 @@ def build_flawed_draft(folder) -> dict:
         "revised": "bozza-revisionato.docx",
         "min_insertions": 5,
         "visible_text": ["installazione"],
-        "failed_checks": ["font_family", "chars_per_line", "section:indice:present",
-                          "section:introduzione:pages"],
+        "secret": "Alfa2024!",
+        # form defects: the report's Form table marks this measure check failed (✗)
+        "form_defects": {
+            "font": "font_family",
+            "chars_per_line": "chars_per_line",
+            "no_index": "section:indice:present",
+            "intro_length": "section:introduzione:pages",
+        },
+        # other defects: one keyword at the start of a word in the report (in `section`,
+        # when given), never a word every report following the template contains
         "defects": {
-            "font": ["calibri", "carlito"],
-            "chars_per_line": ["caratteri per riga", "characters per line", "chars_per_line"],
-            "no_index": ["indice", "sommario", "table of contents"],
-            "intro_length": ["introduzione", "introduction"],
-            "typo_installaizone": ["installaizone"],
-            "typo_e_stato": ["e stato"],
-            "typo_perche": ["perchè"],
-            "typo_qual_e": ["qual'è", "qual’è"],
-            "typo_un_altro": ["un'altro", "un’altro"],
-            "acronym_ci_cd": ["ci/cd"],
-            "figure_not_cited": ["figura 2", "fig. 2", "figure 2"],
-            "personal_contribution": ["passiv", "impersonal", "prima persona", "first person",
-                                      "contributo personale", "personal contribution",
-                                      "cosa hai fatto"],
-            "credential": ["password", "credenzial", "riservat", "credential",
-                           "confidential"],
+            "typo_installaizone": {"keywords": ["installaizone"]},
+            "typo_e_stato": {"keywords": ["e stato"]},
+            "typo_perche": {"keywords": ["perchè"]},
+            "typo_qual_e": {"keywords": ["qual'è", "qual’è"]},
+            "typo_un_altro": {"keywords": ["un'altro", "un’altro"]},
+            "acronym_ci_cd": {"keywords": ["ci/cd"]},
+            "figure_not_cited": {"keywords": ["figura 2", "fig. 2", "figure 2"]},
+            "personal_contribution": {
+                "keywords": ["passiv", "impersonal", "prima persona", "first person"],
+                "section": ["contenuto", "content"]},
+            # plus: the secret is deleted from, or commented in, the revised copy
+            "credential": {"keywords": ["password", "credenzial", "riservat", "credential",
+                                        "confidential"]},
         },
     }
