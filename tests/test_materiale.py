@@ -208,7 +208,7 @@ def test_cli_material_and_notebook(tmp_path, capsys):
     out = tmp_path / "inv.json"
     assert main(["material", str(work), "-o", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8"))["files"]
-    assert main(["material", str(work), "-o", str(out)]) == 2
+    assert main(["material", str(work), "-o", str(out)]) == 0   # JSON output is rewritten
     assert main(["material", str(work)]) == 0
     assert "code" in capsys.readouterr().out
     md = tmp_path / "n.md"
@@ -217,10 +217,15 @@ def test_cli_material_and_notebook(tmp_path, capsys):
     assert "## Cell 1" in md.read_text(encoding="utf-8")
     assert main(["notebook", str(work / "n.ipynb"), "-o", str(md)]) == 2
     assert "n-2.md" in capsys.readouterr().err
+    assert main(["notebook", str(work / "n.ipynb"), "-o", str(tmp_path / "n3.md"),
+                 "--images", str(tmp_path / "im")]) == 2
+    assert "new --images folder" in capsys.readouterr().err
     (work / "bad.ipynb").write_text("{", encoding="utf-8")
     assert main(["notebook", str(work / "bad.ipynb"), "-o", str(tmp_path / "b.md")]) == 2
 
 
 def test_material_module_never_loads_user_code():
     src = (ROOT / "scripts/helpmewrite/materiale.py").read_text(encoding="utf-8")
-    assert not re.search(r"\b(pickle|joblib|runpy|importlib|exec\(|eval\()", src)
+    banned = "pickle|joblib|runpy|importlib|marshal|dill|cloudpickle"
+    assert not re.search(rf"^\s*(import|from)\s+({banned})\b", src, re.MULTILINE)
+    assert not re.search(r"\b(exec|eval|__import__)\(", src)

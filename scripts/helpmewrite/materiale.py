@@ -30,9 +30,7 @@ _EXT = {
     "document": ".md .txt .docx .pdf .tex .bib .odt .rtf",
     "image": ".png .jpg .jpeg .svg .gif .tif .tiff .bmp",
     "archive": ".zip .tar .gz .tgz .7z .rar",
-    # Serialized-object formats. Spelled in pieces so that this module's source never
-    # contains the names of the loaders: a test guarantees it never uses them.
-    "model": ".job" "lib .pk" "l .pic" "kle .pt .pth .onnx .ckpt .npy .npz",
+    "model": ".joblib .pkl .pickle .pt .pth .onnx .ckpt .npy .npz",
 }
 _KIND = {ext: kind for kind, exts in _EXT.items() for ext in exts.split()}
 _TEXT_DATA = {".csv", ".tsv", ".json", ".dat", ".txt"}
@@ -317,7 +315,8 @@ def _save_png(b64, images_dir: Path | None, name: str) -> Path | None:
         return None
     target = Path(images_dir) / name
     if target.exists():
-        raise MaterialError(f"image already exists: {target} (it is never overwritten)")
+        raise MaterialError(f"image already exists: {target} (it is never overwritten); "
+                            f"pass a new --images folder")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(raw)
     return target
@@ -336,8 +335,6 @@ def run_material(args) -> int:
     work = Path(args.work)
     if not work.is_dir():
         raise cli.CliError(f"not a folder: {work}")
-    if args.output and cli.refuses_existing_output(args.output):
-        return 2
     inv = inventory(work, Path(args.extract) if args.extract else None)
     counts = {}
     for f in inv["files"]:
