@@ -295,7 +295,9 @@ def test_skills_use_known_commands():
 def test_entry_skill_rules():
     _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
     flat = " ".join(body.split())
-    for needed in ["LaTeX or Word", "never ask again", "state modified", "[DA VERIFICARE"]:
+    for needed in ["LaTeX or Word", "never ask again", "state modified", "[DA VERIFICARE",
+                   "give them this `<work>` (absolute) as their work folder",
+                   "the working copy's main `.tex`"]:
         assert needed in flat, needed
 
 

@@ -50,6 +50,16 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
 - **Online only for titles, authors and DOI** of sources the user cited; never to fetch
   content to write.
 
+## Handing off
+
+When handing off to [linee-guida](../linee-guida/SKILL.md) or
+[revisione](../revisione/SKILL.md), give them this `<work>` (absolute) as their work
+folder, whatever their own default says (for LaTeX, the folder that holds the project
+folder), so they find the same `<work>/.help-me-write/`. For `revisione` also give the
+document to review: the working copy's main `.tex` (LaTeX) or the output `.docx` (Word);
+for `solo-revisione`, the user's draft. Never the original draft of a `da-zero` or
+`bozza-parziale` project.
+
 ## Steps
 
 1. **Check the tools.** Run `hmw doctor`. LibreOffice is needed for Word; latexmk and
@@ -79,7 +89,7 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
      minimum of the guidelines (if `<work>/.help-me-write/linee-guida.yaml` exists;
      otherwise ask the user): `bozza-parziale`;
    - a complete draft: `solo-revisione`: follow the [revisione](../revisione/SKILL.md)
-     skill and stop here.
+     skill and stop here, handing off as in "Handing off" below.
    - Several drafts: ask which one.
 4. **Format.**
    - `da-zero`: always ask the user: "LaTeX or Word?". It is the user's decision, never
@@ -100,7 +110,8 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
    (`da-zero`, `bozza-parziale`), `--format` (`latex`, `word`) and the document's
    `--language`; leave out `--draft` for `da-zero`). The command
    stores the two paths relative to `<work>`. It refuses an existing state: go back to
-   step 2.
+   step 2. If `<work>` moved to the parent, the state folder and every draft path are
+   relative to the new `<work>`: run `hmw detect "<work>" --json` again there.
 6. **Phases.** Run `hmw state show "<work>" --json` and read `next.phase` (with
    `next.chapter` and `next.why`). Follow the skill of the phase, then show the user what
    was done and run `hmw state show "<work>" --json` again.
@@ -108,12 +119,12 @@ Every skill of the flow follows these; repeat them to any subagent you dispatch.
    | `next.phase` | What to do |
    |---|---|
    | `materiale` | [analisi-materiale](../analisi-materiale/SKILL.md) |
-   | `linee-guida` | [linee-guida](../linee-guida/SKILL.md); then `hmw state set "<work>" document_type=<type> profile=<profile>` with the values of its `linee-guida.yaml` |
+   | `linee-guida` | [linee-guida](../linee-guida/SKILL.md) with this `<work>`; then `hmw state set "<work>" document_type=<type> profile=<profile>` with the values of its `linee-guida.yaml` |
    | `formato` | step 4; then `hmw state set "<work>" format=<latex or word>` |
    | `struttura`, `frontespizio` | skill struttura (outline, title page) |
    | `intervista` | skill intervista-capitolo, for `next.chapter` |
    | `scrittura`, `approvazione` | skill scrittura-capitolo, for `next.chapter` |
-   | `revisione` | [revisione](../revisione/SKILL.md) on the output document, then measure the result: `hmw measure "<document>" --rules "<work>/.help-me-write/linee-guida.yaml"` |
+   | `revisione` | [revisione](../revisione/SKILL.md) with this `<work>` on the working copy's main `.tex` or the output `.docx` (see Handing off), then measure the result: `hmw measure "<document>" --rules "<work>/.help-me-write/linee-guida.yaml"` |
    | `fine` | summary for the user with the paths of the document and of the review report |
 
    - After each phase, update the state with the state commands (set, outline, chapter, record) the phase's skill
