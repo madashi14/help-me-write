@@ -45,17 +45,15 @@ def _inside(path: Path, folder: Path) -> bool:
     return path == folder or folder in path.parents
 
 
-def setup(folder: Path, expected_path: Path, plugin: Path) -> int:
-    from fixtures.builders import build_flawed_draft
-
-    folder, expected_path, plugin = folder.resolve(), expected_path.resolve(), plugin.resolve()
+def prepare(folder: Path, expected_path: Path, plugin: Path) -> bool:
+    """Check that the three setup paths are apart, then copy the plugin to `plugin`."""
     for other in (expected_path, plugin):
         if _inside(other, folder) or _inside(folder, other):
             print(f"error: {other} and {folder} must not contain each other", file=sys.stderr)
-            return 2
+            return False
     if plugin.exists() and any(plugin.iterdir()):
         print(f"error: {plugin} exists and is not empty", file=sys.stderr)
-        return 2
+        return False
     for part in PLUGIN_PARTS:
         source = REPO / part
         if source.is_dir():
@@ -65,6 +63,15 @@ def setup(folder: Path, expected_path: Path, plugin: Path) -> int:
             plugin.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, plugin / part)
     folder.mkdir(parents=True, exist_ok=True)
+    return True
+
+
+def setup(folder: Path, expected_path: Path, plugin: Path) -> int:
+    from fixtures.builders import build_flawed_draft
+
+    folder, expected_path, plugin = folder.resolve(), expected_path.resolve(), plugin.resolve()
+    if not prepare(folder, expected_path, plugin):
+        return 2
     expected = build_flawed_draft(folder)
     state = folder / ".help-me-write"
     state.mkdir(exist_ok=True)

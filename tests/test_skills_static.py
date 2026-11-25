@@ -48,7 +48,8 @@ def relative_paths(body: str) -> list[str]:
 
 
 def test_expected_skills_and_profiles_exist():
-    assert (ROOT / "skills" / "linee-guida" / "SKILL.md") in SKILLS
+    for name in ["linee-guida", "revisione", "revisione-bibliografia"]:
+        assert (ROOT / "skills" / name / "SKILL.md") in SKILLS
     assert {p.stem for p in PROFILES} >= {"relazione-tirocinio", "generico"}
 
 
@@ -100,6 +101,39 @@ def test_revisore_prompt_contract():
     for needed in ["## Form", "## Content", "## Questions for the author", '"by": "revisore"',
                    "## Content checklist", "Never invent", "[DA VERIFICARE"]:
         assert needed in text, needed
+
+
+def test_revisione_bibliografia_description_triggers():
+    meta, _ = _split(ROOT / "skills" / "revisione-bibliografia" / "SKILL.md")
+    for word in ["bibliografia", "citazioni", "fonti", "controlla le citazioni",
+                 "check my references", "check my citations", "revisione skill"]:
+        assert word in meta["description"], word
+
+
+def test_revisore_bibliografia_prompt_contract():
+    folder = ROOT / "skills" / "revisione-bibliografia"
+    text = (folder / "prompt-revisore-bibliografia.md").read_text(encoding="utf-8")
+    placeholders = set(re.findall(r"\{([A-Z_]+)\}", text))
+    assert placeholders == {"EXTRACT", "BIB", "PROFILE", "GUIDELINES", "BIBFILE", "SOURCES",
+                            "HMW", "EDITS_OUT", "NOTES_OUT", "DOCUMENT_LANGUAGE",
+                            "USER_LANGUAGE"}
+    for needed in ["## Citations", "## Missing citations", "## Bibliography consistency",
+                   '"by": "bibliografia"', "## Citation needs", "pdftext",
+                   "title, authors, year and DOI", "not verifiable", "possible invented or wrong",
+                   "page", "author's own work"]:
+        assert needed in text, needed
+    _, body = _split(folder / "SKILL.md")
+    assert "./prompt-revisore-bibliografia.md" in body
+    for output in ["bib.json", "edits-bibliografia.json", "note-bibliografia.md"]:
+        assert output in body, output
+
+
+def test_revisione_runs_the_bibliography_reviewer():
+    _, body = _split(ROOT / "skills" / "revisione" / "SKILL.md")
+    assert "](../revisione-bibliografia/SKILL.md)" in body
+    for output in ["<rev>/bib.json", "<rev>/edits-bibliografia.json",
+                   "<rev>/note-bibliografia.md", '--edits "<rev>/edits-bibliografia.json"']:
+        assert output in body, output
 
 
 def test_rapporto_template_sections_in_order():

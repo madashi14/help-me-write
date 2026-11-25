@@ -61,14 +61,15 @@ cannot correct from the document itself becomes a question.
    `layout` refuses (a font of no known family, no `font_size_pt`), tell the user why:
    there will be no formatted copy.
 4. **Bibliography reviewer, in parallel.** When the profile has a `## Citation needs`
-   section, or the document has citations or a bibliography section, also run the
-   `revisione-bibliografia` skill (folder ../revisione-bibliografia/ from this skill's
-   folder) with `<work>` as its work folder (where it looks for the sources) and `<rev>`
-   for its outputs, up to the dispatch of its reviewer with its own prompt, without its
-   own track and report steps: it writes `<rev>/bib.json`,
-   `<rev>/edits-bibliografia.json` and `<rev>/note-bibliografia.md`. Dispatch its reviewer
-   at the same time as the one of step 5, not after it. If that skill is not installed,
-   skip it: the report's bibliography section then says "not run".
+   section, or the document has citations or a bibliography section, also run steps 3
+   and 4 of the [revisione-bibliografia](../revisione-bibliografia/SKILL.md) skill, with
+   `<work>` as its work folder (its sources are the PDFs there), this `<rev>` for its
+   outputs, and the guidelines and profile of step 2. Its step 3 writes `<rev>/bib.json`
+   (`extract.json` exists already); its reviewer, dispatched with its own prompt, writes
+   `<rev>/edits-bibliografia.json` and `<rev>/note-bibliografia.md`. Its own track and
+   report steps are not run: steps 6 and 9 here do them. Dispatch its reviewer at the
+   same time as the one of step 5, not after it. If that skill is not installed, skip it:
+   the report's bibliography section then says "not run".
 5. **Main reviewer.** Take `./prompt-revisore.md`, fill its placeholders with absolute
    paths (extract, measure, guidelines, profile, the two outputs in `<rev>`), the
    document's language, the user's language and `{ANSWERS}` = none. Dispatch a fresh

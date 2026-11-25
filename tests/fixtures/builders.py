@@ -259,3 +259,181 @@ def build_flawed_draft(folder) -> dict:
                                         "confidential"]},
         },
     }
+
+
+# --- bibliography draft for the bibliography scenario (spec §9 case 5) --------------------
+
+_BIB_PERSONAL = [
+    "Ho configurato la cache delle dipendenze nella pipeline del gestionale, partendo dai "
+    "file di configurazione già presenti nel repository.",
+    "Ho scritto una suite di test di integrazione per il modulo di fatturazione, che ora "
+    "viene eseguita a ogni richiesta di integrazione.",
+    "Ho misurato la durata delle build su venti esecuzioni prima e dopo la modifica: la "
+    "durata media è scesa da 14 a 10 minuti.",
+]
+
+_BIB_DRAFT = [
+    ("Title", "Relazione di fine tirocinio"),
+    "Studentessa: Giulia Ferraro - Struttura ospitante: Beta Software S.r.l.",
+    ("Heading 1", "Introduzione"),
+    "Il tirocinio si è svolto presso Beta Software tra febbraio e maggio 2026 ed è stato "
+    "dedicato a ridurre i tempi della pipeline di integrazione continua (CI) del gestionale "
+    "dell'azienda. Oggi il 70% delle aziende italiane usa pipeline CI per compilare e "
+    "verificare il proprio software, e Beta Software le usa da alcuni anni.",
+    ("Heading 1", "Contesto"),
+    "Una pipeline CI compila il codice ed esegue i test a ogni modifica. L'esecuzione dei "
+    "test automatici a ogni modifica permette di individuare la maggior parte dei difetti "
+    "prima del rilascio [2]. Secondo [1] la cache delle dipendenze riduce i tempi di build "
+    "del 60%, perché evita di scaricare e compilare di nuovo le librerie che non sono "
+    "cambiate.",
+    "Approcci più sperimentali applicano il calcolo quantistico alla scelta dei test da "
+    "eseguire [3]. Le pipeline descritte in forma dichiarativa sono inoltre più semplici da "
+    "mantenere [4].",
+    ("Heading 1", "Attività svolte"),
+    "Nelle prime due settimane ho studiato la pipeline esistente insieme al tutor aziendale. "
+    + _BIB_PERSONAL[0],
+    _BIB_PERSONAL[1] + " Il modulo era il più modificato del gestionale e il più esposto "
+    "agli errori di regressione.",
+    _BIB_PERSONAL[2],
+    ("Heading 1", "Conclusione"),
+    "Il tirocinio mi ha permesso di ridurre i tempi della pipeline del gestionale e di "
+    "lavorare da vicino con un gruppo di sviluppo.",
+    ("Heading 1", "Bibliografia"),
+    "[1] Rossi, M. (2021). Tempi di build nelle pipeline di integrazione continua. Rivista "
+    "di Ingegneria del Software, 12(2).",
+    "[2] Bianchi, L. (2018). Test automatici in contesti industriali. Atti del Convegno "
+    "Italiano di Ingegneria del Software.",
+    "[3] Neri, P. (2018). Quantum CI. doi:10.9999/fake.2018",
+]
+
+# the fictional sources: one list of paragraphs per page; page 1 has title, author, year
+_ROSSI_2021 = [
+    [("Title", "Tempi di build nelle pipeline di integrazione continua"),
+     "Rossi M.",
+     "Rivista di Ingegneria del Software, 12(2), 2021",
+     "Sommario. Lo studio misura l'effetto di tre tecniche di ottimizzazione sui tempi di "
+     "build di dodici progetti che compilano e verificano il codice a ogni modifica.",
+     "1. Introduzione",
+     "La durata di una build condiziona il lavoro quotidiano degli sviluppatori: più la "
+     "build è lunga, più tardi arrivano le segnalazioni degli errori. Lo studio confronta "
+     "la cache delle dipendenze, la compilazione incrementale e l'esecuzione parallela."],
+    ["2. Risultati",
+     "Nei dodici progetti analizzati, la cache delle dipendenze riduce i tempi di build del "
+     "30% rispetto alle esecuzioni senza cache, perché evita di scaricare e compilare di "
+     "nuovo le librerie che non sono cambiate.",
+     "La compilazione incrementale aggiunge un risparmio solo nei progetti con molti moduli, "
+     "mentre l'esecuzione parallela conviene quando le verifiche durano più di dieci minuti.",
+     "3. Conclusioni",
+     "La cache delle dipendenze è la tecnica con il miglior rapporto tra beneficio e costo "
+     "di configurazione."],
+]
+_BIANCHI_2020 = [
+    [("Title", "Test automatici in contesti industriali"),
+     "Bianchi L.",
+     "Atti del Convegno Italiano di Ingegneria del Software, 2020",
+     "Sommario. L'articolo descrive l'introduzione di test automatici in otto aziende "
+     "manifatturiere e i suoi effetti sulla qualità del software rilasciato.",
+     "Su un campione di otto aziende, l'esecuzione dei test automatici a ogni modifica del "
+     "codice ha permesso di individuare la maggior parte dei difetti prima del rilascio in "
+     "produzione.",
+     "I costi principali sono la scrittura dei test e la loro manutenzione quando il codice "
+     "cambia."],
+]
+
+
+def write_pdf_pages(path, pages) -> Path:
+    """Write a PDF with one page per list of paragraphs (rendered with LibreOffice)."""
+    import shutil
+    import tempfile
+
+    from docx.enum.text import WD_BREAK
+
+    from helpmewrite.render import render_pdf
+
+    path = Path(path)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        src = write_docx(tmp / "src.docx", [p for page in pages for p in page])
+        document = docx.Document(str(src))
+        last = -1
+        for page in pages[:-1]:
+            last += len(page)
+            document.paragraphs[last].add_run().add_break(WD_BREAK.PAGE)
+        document.save(str(src))
+        pdf = render_pdf(src, tmp / "out")
+        shutil.move(str(pdf), str(path))
+    return path
+
+
+def build_bib_draft(folder) -> dict:
+    """Write bozza-bib.docx and fonti/ with the defects of spec §9 case 5; return what the
+    bibliography reviewer must find.
+
+    A short internship report with numeric citations [1]-[4] and a bibliography of three
+    entries. fonti/rossi2021.pdf and fonti/bianchi2020.pdf are the (fictional) sources of
+    [1] and [2]: title, author and year on page 1, so `bib --sources` matches them. Needs
+    LibreOffice to render the two PDFs.
+
+    Defects (ids as in the result):
+    - wrong_claim: "Secondo [1] la cache delle dipendenze riduce i tempi di build del 60%",
+      while rossi2021.pdf says 30% (page 2);
+    - invented_entry: [3] "Neri, P. (2018). Quantum CI. doi:10.9999/fake.2018" does not
+      exist (no PDF, a DOI prefix nobody has);
+    - wrong_year: [2] has 2018, its source 2020;
+    - missing_citation: "il 70% delle aziende italiane usa pipeline CI" has no citation;
+    - missing_entry: [4] is cited and has no entry.
+
+    Three sentences on the student's own activities ("Ho configurato…", "Ho scritto…",
+    "Ho misurato…", the last with numbers) need no citation: no edit may fall in them.
+
+    The result: the draft's name and sha256, the sources' sha256, the expected revised
+    copy, the minimum number of comments in it, the personal sentences and, for each
+    defect, the evidence tests/scenari/check_bibliografia.py looks for.
+    """
+    import hashlib
+
+    folder = Path(folder)
+    sources = folder / "fonti"
+    sources.mkdir(parents=True, exist_ok=True)
+    path = write_docx(folder / "bozza-bib.docx", _BIB_DRAFT, font="Calibri", size_pt=11,
+                      margins_cm=2.5)
+    write_pdf_pages(sources / "rossi2021.pdf", _ROSSI_2021)
+    write_pdf_pages(sources / "bianchi2020.pdf", _BIANCHI_2020)
+
+    def sha(p):
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
+    return {
+        "document": "bozza-bib.docx",
+        "sha256": sha(path),
+        "sources": {f"fonti/{p.name}": sha(p) for p in sorted(sources.glob("*.pdf"))},
+        "revised": "bozza-bib-revisionato.docx",
+        "min_comments": 3,
+        "personal_sentences": list(_BIB_PERSONAL),
+        "defects": {
+            # the row of [1] in the notes: verdict not / partially supported, the source
+            # passage quoted verbatim (at least these words) with its page
+            "wrong_claim": {"key": "[1]", "quote": "tempi di build del 30%", "page": 2,
+                            "verdicts": ["non supportat", "parzialmente supportat",
+                                         "not supported", "partially supported"]},
+            # a statement about [3] in the notes: not found, possibly invented, or not
+            # verifiable (no network)
+            "invented_entry": {"key": "[3]", "keywords": [
+                "inventat", "non trovat", "non è stata trovat", "non è stato trovat",
+                "nessuna traccia", "non verificabil", "non verificat", "inesistent",
+                "non esist", "fittizi", "invented", "not found", "not been found",
+                "no record", "not verifiable", "unverifiable", "not verified",
+                "does not exist", "fictitious"]},
+            # a statement about [2] in the notes with both years; a tracked change in
+            # its entry from 2018 to 2020
+            "wrong_year": {"key": "[2]", "wrong": "2018", "right": "2020"},
+            # an item of "## Missing citations" with this text
+            "missing_citation": {"keywords": ["70%"]},
+            # [4] in "## Bibliography consistency" as missing from the bibliography
+            "missing_entry": {"key": "[4]", "keywords": [
+                "assent", "manc", "non present", "non è present", "non compar",
+                "non in bibliografia", "non è in bibliografia", "senza voce",
+                "nessuna voce", "senza corrispondenza", "missing", "absent",
+                "not in the bibliography", "no entry", "not listed"]},
+        },
+    }
