@@ -466,6 +466,21 @@ def test_typical_bottom_is_not_pulled_up_by_pages_that_end_early():
     assert typical_bounds([]) == (0.0, 0.0)
 
 
+def test_typical_top_is_not_pushed_down_by_pages_that_start_lower():
+    from helpmewrite.measure import typical_bounds
+
+    # pages opening with a chapter title (no longer margin lines, R9-1) start 3 slots lower
+    pitch = 21.1
+
+    def pages(at_top, lower):
+        return ([[_line(75.2 + i * pitch) for i in range(33)] for _ in range(at_top)]
+                + [[_line(75.2 + (i + 3) * pitch) for i in range(30)] for _ in range(lower)])
+
+    assert typical_bounds(pages(3, 5))[0] == 75.2
+    top = typical_bounds(pages(2, 4))[0]        # the median would be 3 pitches lower
+    assert 75.2 <= top < 75.2 + pitch
+
+
 def _spread_line(words, last_gap=4.0, top=100.0):
     """A body line of words 5 pt per character wide, 4 pt apart (last_gap before the last)."""
     from helpmewrite.measure import _make_line

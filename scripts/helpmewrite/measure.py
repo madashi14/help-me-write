@@ -28,9 +28,10 @@ page numbers and section lengths. Algorithm:
    caption, a footnote) is occupied, any other is empty (a figure without a caption, a
    text that ends early). A page is full when round(empty) <= MISSING_SLOTS and it is not
    the last page; its line slots are its body lines plus round(occupied). The typical top
-   is the median of the pages' first body-line tops, the typical bottom the upper quartile
-   of their last body-line bottoms (pages that end early, often half of a short document
-   with a chapter per page, do not pull it up), without the first and the last page. The
+   is the lower quartile of the pages' first body-line tops, the typical bottom the upper
+   quartile of their last body-line bottoms, without the first and the last page: pages
+   that start lower (a chapter title on top) or end early (the end of a chapter), often
+   half of a short document with a chapter per page, do not move them (R9-3). The
    paragraph step is the pitch, or the usual wider step between paragraphs when the
    document has paragraph spacing;
 6. full prose lines: a body line 90-110% as wide as the reference width, unless two
@@ -284,14 +285,17 @@ def margin_positions(pages: list[list[_Line]], pitch: float,
 
 def typical_bounds(pages: list[list[_Line]]) -> tuple[float, float]:
     """(typical top, typical bottom) of the text on pages of body lines (see 5. above):
-    median of the first tops, upper quartile of the last bottoms; (0, 0) without pages."""
+    lower quartile of the first tops, upper quartile of the last bottoms; (0, 0) without
+    pages."""
     pages = [lines for lines in pages if lines]
     if not pages:
         return 0.0, 0.0
-    bottoms = [lines[-1].bottom for lines in pages]
-    bottom = (statistics.quantiles(bottoms, n=4, method="inclusive")[-1] if len(bottoms) > 1
-              else bottoms[0])
-    return statistics.median(lines[0].top for lines in pages), bottom
+    if len(pages) == 1:
+        return pages[0][0].top, pages[0][-1].bottom
+    tops = statistics.quantiles([lines[0].top for lines in pages], n=4, method="inclusive")
+    bottoms = statistics.quantiles([lines[-1].bottom for lines in pages], n=4,
+                                   method="inclusive")
+    return tops[0], bottoms[-1]
 
 
 def slot_counts(body, others, typical_top: float, typical_bottom: float, pitch: float,
