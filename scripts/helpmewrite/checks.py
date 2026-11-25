@@ -95,6 +95,23 @@ def _chars_skip_reason(p, last) -> str | None:
     return None
 
 
+def _chars_skip_with_bibliography(bibliography):
+    def skip_reason(p, last):
+        return _chars_skip_reason(p, last) or ("bibliography" if p.number in bibliography else None)
+    return skip_reason
+
+
+def _bibliography_pages(sections) -> set:
+    """Pages inside the span of a bibliography heading (empty without section spans)."""
+    from .bib import is_bibliography_heading  # lazy: bib imports the extractors
+
+    pages = set()
+    for span in sections or []:
+        if is_bibliography_heading(span.title):
+            pages.update(range(span.start_page, span.end_page + 1))
+    return pages
+
+
 def _per_page(rule, pages, rng, value, unit, skip_reason, scope, how="") -> Check:
     """A range check of value(p) on the pages skip_reason does not skip (scope names them);
     how, if given, says how the value is counted."""
@@ -278,7 +295,8 @@ def check_rules(m_pages, sections, rules, headings_source="docx") -> list[Check]
     if rules.chars_per_line is not None:
         checks.append(_per_page("chars_per_line", m_pages, rules.chars_per_line,
                                 lambda p: p.chars_per_full_line, "chars per full line",
-                                _chars_skip_reason, "pages"))
+                                _chars_skip_with_bibliography(_bibliography_pages(sections)),
+                                "pages"))
     if rules.page_numbers:
         checks.append(_page_numbers(m_pages))
     checks.extend(_section_checks(sections, rules.sections, m_pages, headings_source))

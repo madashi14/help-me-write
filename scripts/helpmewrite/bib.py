@@ -327,6 +327,11 @@ _BIB_HEADING = re.compile(
     r"\s*:?\s*$", re.IGNORECASE)
 
 
+def is_bibliography_heading(title: str) -> bool:
+    """True if a heading title names the bibliography (also sitografia/webgrafia)."""
+    return bool(_BIB_HEADING.match(title or "") or _WEB_HEADING.match(title or ""))
+
+
 def _bib_files(paragraphs: list[dict], main: Path, explicit: Path | None) -> list[Path]:
     if explicit is not None:
         if not Path(explicit).is_file():

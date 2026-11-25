@@ -667,3 +667,15 @@ def test_section_spans_find_heading_wrapped_over_lines():
         {"text": "Automazione delle simulazioni FEM mediante Python", "heading_level": 1}])
     assert [(s.title[:5], s.start_page, s.end_page) for s in spans] == [
         ("Intro", 3, 3), ("Famil", 4, 4), ("Autom", 5, 5)]
+
+
+def test_chars_per_line_skips_bibliography_pages():
+    pages = good_pages() + [page(13, chars=59.5)]
+    rules = unibo_without_sections()
+    spans = [SectionSpan("Bibliografia", 1, 13, 13)]
+    by = {c.rule: c for c in check_rules(pages, spans, rules)}
+    assert by["chars_per_line"].ok and "13 (bibliography)" in by["chars_per_line"].detail
+    # no bibliography heading: unchanged
+    for other in (None, [], [SectionSpan("Conclusioni", 1, 13, 13)]):
+        by = {c.rule: c for c in check_rules(pages, other, rules)}
+        assert not by["chars_per_line"].ok and by["chars_per_line"].pages == [13]
