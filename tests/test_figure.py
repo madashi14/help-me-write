@@ -110,3 +110,33 @@ def test_diagram_cli(tmp_path):
     spec.write_text(json.dumps({"direction": "LR", "nodes": N("a", "b"), "edges": E("ab")}))
     assert cli.main(["diagram", str(spec), "-o", str(tmp_path / "d.png")]) == 0
     assert (tmp_path / "d.png").is_file()
+
+
+def test_chart_csv_row_longer_than_header(tmp_path, capsys):
+    (tmp_path / "c.csv").write_text("a;b\nx;1,5\ny;2;9\n")
+    spec = tmp_path / "s.json"
+    spec.write_text(json.dumps({"type": "bar", "csv": {"file": "c.csv", "x": "a", "y": ["b"]}}))
+    assert cli.main(["chart", str(spec), "-o", str(tmp_path / "g.png")]) == 2
+    err = capsys.readouterr().err
+    assert "c.csv" in err and "row 2" in err and "AttributeError" not in err
+
+
+@pytest.mark.parametrize("content,msg", [("a;b\n", "no data rows"), ("", "no data rows"),
+                                          ("a;c\n", "column 'b'")])
+def test_chart_csv_without_rows_or_columns(tmp_path, capsys, content, msg):
+    (tmp_path / "c.csv").write_text(content)
+    spec = tmp_path / "s.json"
+    spec.write_text(json.dumps({"type": "bar", "csv": {"file": "c.csv", "x": "a", "y": ["b"]}}))
+    assert cli.main(["chart", str(spec), "-o", str(tmp_path / "g.png")]) == 2
+    err = capsys.readouterr().err
+    assert msg in err or "column 'a'" in err
+    assert "ZeroDivisionError" not in err and "Traceback" not in err
+
+
+def test_chart_sidecar_only_hint_names_image(tmp_path, capsys):
+    (tmp_path / "c.csv").write_text("a,b\nx,1\n")
+    spec = tmp_path / "s.json"
+    spec.write_text(json.dumps({"type": "bar", "csv": {"file": "c.csv", "x": "a", "y": ["b"]}}))
+    (tmp_path / "ok.png.fonte.json").write_text("{}")
+    assert cli.main(["chart", str(spec), "-o", str(tmp_path / "ok.png")]) == 2
+    assert "ok-2.png" in capsys.readouterr().err

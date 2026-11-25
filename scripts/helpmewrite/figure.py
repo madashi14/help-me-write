@@ -52,6 +52,11 @@ def to_number(text) -> float:
 
 def load_table(path: Path) -> list[dict[str, str]]:
     """Rows of a CSV as dicts; BOM removed, separator among , ; and tab detected."""
+    return _read_table(path)[1]
+
+
+def _read_table(path: Path):
+    """(header, rows) of a CSV."""
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8-sig")
@@ -63,7 +68,12 @@ def load_table(path: Path) -> list[dict[str, str]]:
     if head.count(sep) == 0:
         sep = ","
     reader = csv.DictReader(io.StringIO(text), delimiter=sep)
-    return [{(k or "").strip(): (v or "").strip() for k, v in row.items()} for row in reader]
+    rows = []
+    for n, row in enumerate(reader, 1):
+        if None in row:
+            raise FigureError(f"{path.name}, row {n}: more cells than the header has columns")
+        rows.append({k.strip(): (v or "").strip() for k, v in row.items()})
+    return [k.strip() for k in (reader.fieldnames or [])], rows
 
 
 def json_value(path: Path, key: str) -> float:
@@ -92,7 +102,12 @@ def _points_from_csv(spec: dict, base: Path):
     file, xcol, ycols = spec.get("file"), spec.get("x"), spec.get("y")
     if not file or not xcol or not isinstance(ycols, list) or not ycols:
         raise FigureError('"csv" needs "file", "x" and a non-empty "y" list')
-    rows = load_table(base / file)
+    header, rows = _read_table(base / file)
+    for col in [xcol, *ycols]:
+        if col not in header:
+            raise FigureError(f"column {col!r} not found in {file}")
+    if not rows:
+        raise FigureError(f"{file} has no data rows")
     labels = spec.get("labels") or {}
     cats, series, prov = [], {}, []
     for n, row in enumerate(rows, 1):
@@ -171,7 +186,7 @@ def render_chart(spec: dict, base: Path, out: Path) -> dict:
                 pairs = [(p, v) for p, v in zip(pos, values) if v is not None]
                 draw = ax.bar if kind == "bar" else ax.barh
                 bars = draw([p for p, _ in pairs], [v for _, v in pairs],
-                            width if kind == "bar" else width, label=name or None)
+                            width, label=name or None)
                 if spec.get("annotate"):
                     ax.bar_label(bars, labels=[_fmt(v, language) for _, v in pairs],
                                  padding=2, fontsize=8)
@@ -375,6 +390,16 @@ def _load_spec(path) -> dict:
     return spec
 
 
+def _free_pair(out: Path) -> Path:
+    """First image name (out, -2, -3, ...) whose image and provenance file are both free."""
+    n = 1
+    while True:
+        cand = out if n == 1 else out.with_name(f"{out.stem}-{n}{out.suffix}")
+        if not cand.exists() and not cand.with_name(cand.name + ".fonte.json").exists():
+            return cand
+        n += 1
+
+
 def _run(args, chart: bool) -> int:
     import sys
 
@@ -384,15 +409,21 @@ def _run(args, chart: bool) -> int:
     prov_path = out.with_name(out.name + ".fonte.json")
     if cli.refuses_existing_output(out, sources=[args.spec]):
         return 2
-    if chart and cli.refuses_existing_output(prov_path):
+    if chart and prov_path.exists():
+        print(f"error: provenance file already exists: {prov_path} (it is never overwritten); "
+              f"use a new image name, e.g. {_free_pair(out)}", file=sys.stderr)
         return 2
     try:
         spec = _load_spec(args.spec)
         out.parent.mkdir(parents=True, exist_ok=True)
         if chart:
             prov = render_chart(spec, Path(args.spec).resolve().parent, out)
-            prov_path.write_text(json.dumps(prov, ensure_ascii=False, indent=2) + "\n",
-                                 encoding="utf-8")
+            try:
+                prov_path.write_text(json.dumps(prov, ensure_ascii=False, indent=2) + "\n",
+                                     encoding="utf-8")
+            except OSError:
+                out.unlink(missing_ok=True)
+                raise
         else:
             render_diagram(spec, out)
     except FigureError as exc:
