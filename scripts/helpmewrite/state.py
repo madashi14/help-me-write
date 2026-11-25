@@ -143,6 +143,8 @@ def parse_state(text: str) -> ProjectState:
             chapters.append(c)
     seen = set()
     for c in chapters:
+        if not isinstance(c.id, str):
+            continue
         if c.id in seen:
             problems.append(f"chapters: duplicate id '{c.id}'")
         seen.add(c.id)
@@ -191,8 +193,11 @@ def save_state(work, state: ProjectState) -> None:
     path = state_path(work)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_bytes(render_state(state).encode("utf-8"))
-    os.replace(tmp, path)
+    try:
+        tmp.write_bytes(render_state(state).encode("utf-8"))
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def relative_path(work, value) -> str:
@@ -200,12 +205,12 @@ def relative_path(work, value) -> str:
     work = Path(work)
     p = Path(value)
     try:
-        if p.is_absolute():
-            rel = p.resolve().relative_to(work.resolve())
-        else:
-            rel = Path(os.path.normpath(p))
-            if rel.parts[:1] == ("..",):
-                raise ValueError
+        resolved = (work / p).resolve()  # an absolute p wins over work
+        resolved.relative_to(work.resolve())  # containment, symlinks followed
+        rel = p.resolve().relative_to(work.resolve()) if p.is_absolute() \
+            else Path(os.path.normpath(p))
+        if rel.parts[:1] == ("..",):
+            raise ValueError
     except ValueError:
         raise StateError(f"path is outside the work folder: {value}") from None
     return rel.as_posix()
@@ -317,7 +322,7 @@ def _outline(state, items):
         if not isinstance(item, dict) or set(item) - {"id", "title", "kind"}:
             problems.append(f"outline[{i}]: expected an object with id, title, kind")
             continue
-        old = known.get(item.get("id"))
+        old = known.get(item.get("id")) if isinstance(item.get("id"), str) else None
         chapters.append(Chapter(id=item.get("id"), title=item.get("title"),
                                 kind=item.get("kind"),
                                 status=old.status if old else "da-fare",

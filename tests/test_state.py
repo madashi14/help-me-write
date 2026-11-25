@@ -167,3 +167,30 @@ def test_state_show_and_chapter_errors(tmp_path, capsys):
     ch = load_state(tmp_path).chapters[0]
     assert ch.source == "c.tex" and ch.notes == "n.md"
     assert main(["state", "show", str(tmp_path / "nope")]) == 2
+
+
+def test_state_record_refuses_symlink_escape(tmp_path):
+    work, outside = tmp_path / "w", tmp_path / "out"
+    work.mkdir()
+    outside.mkdir()
+    (outside / "secret.docx").write_bytes(b"x")
+    (work / "inside").mkdir()
+    (work / "inside" / "ok.docx").write_bytes(b"x")
+    try:
+        (work / "lnk").symlink_to(outside, target_is_directory=True)
+        (work / "alias").symlink_to(work / "inside", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not available")
+    _project(work)
+    assert main(["state", "record", str(work), "lnk/secret.docx"]) == 2
+    assert main(["state", "record", str(work), str(work / "lnk" / "secret.docx")]) == 2
+    assert main(["state", "record", str(work), "alias/ok.docx"]) == 0
+    assert "alias/ok.docx" in load_state(work).fingerprints
+
+
+def test_state_bad_chapter_id_type(tmp_path, capsys):
+    (tmp_path / ".help-me-write").mkdir()
+    (tmp_path / ".help-me-write" / "progetto.md").write_text(
+        "---\nmode: da-zero\nchapters:\n  - {id: [1], title: A, kind: corpo}\n---\n")
+    assert main(["state", "show", str(tmp_path)]) == 2
+    assert "chapters[0].id" in capsys.readouterr().err

@@ -42,6 +42,14 @@ def _is_empty_part(path: Path) -> bool:
     return len(re.sub(r"\s+", "", text)) < EMPTY_LIMIT
 
 
+def _safe(fn, arg, default):
+    """fn(arg), or default if the file cannot be read or parsed."""
+    try:
+        return fn(arg)
+    except Exception:
+        return default
+
+
 def detect(work) -> dict:
     from . import headings
 
@@ -79,17 +87,22 @@ def detect(work) -> dict:
                 ignored.append(rel)
                 continue
         elif fmt == "latex":
-            parts = headings.tex_parts(path)
+            try:
+                parts = headings.tex_parts(path)
+            except Exception:
+                parts = []
             item["parts"] = [p.relative_to(work).as_posix() if p.is_absolute()
                              else Path(os.path.relpath(p, work)).as_posix() for p in parts]
-            item["empty_parts"] = [r for r, p in zip(item["parts"], parts) if _is_empty_part(p)]
-            item["words"] = sum(_words(_tex_text(p)) for p in [path, *parts])
+            item["empty_parts"] = [r for r, p in zip(item["parts"], parts)
+                                   if _safe(_is_empty_part, p, False)]
+            counts = [_safe(lambda q: _words(_tex_text(q)), p, None) for p in [path, *parts]]
+            item["words"] = sum(c for c in counts if c is not None)
         elif fmt == "word":
             from . import extract
-            item["words"] = sum(_words(p["text"])
-                                for p in extract.extract(path)["paragraphs"])
+            item["words"] = _safe(lambda q: sum(
+                _words(p["text"]) for p in extract.extract(q)["paragraphs"]), path, None)
         else:
-            item["words"] = _words(_read(path))
+            item["words"] = _safe(lambda q: _words(_read(q)), path, None)
         result.append(item)
     state = work / ".help-me-write" / "progetto.md"
     return {"state": state.relative_to(work).as_posix() if state.is_file() else None,

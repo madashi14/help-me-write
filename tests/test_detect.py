@@ -64,3 +64,11 @@ def test_detect_other_formats_and_state(tmp_path, capsys):
     assert main(["detect", str(tmp_path), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["state"] == ".help-me-write/progetto.md"
     assert main(["detect", str(tmp_path / "nope")]) == 2
+
+
+def test_detect_survives_corrupt_docx(tmp_path):
+    _docx(tmp_path / "Relazione buona.docx", "uno due")
+    (tmp_path / "Relazione rotta.docx").write_bytes(b"")
+    d = {x["path"]: x for x in detect(tmp_path)["drafts"]}
+    assert d["Relazione buona.docx"]["words"] == 2
+    assert d["Relazione rotta.docx"]["words"] is None
