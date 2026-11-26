@@ -45,8 +45,10 @@ cannot correct from the document itself becomes a question.
    guidelines, files ending in `-revisionato`, `-formattato` or `-differenze`, and
    `<work>/.help-me-write/`. One: use it. Several: ask the user which. For LaTeX use the
    main file (the one with `\documentclass`). Run `hmw doctor`. Needed: every Python
-   package; `soffice` for `.docx`; `latexmk` and `latexdiff` for `.tex`. If one is
-   missing, tell the user how to install it (the `doctor` output says) and stop.
+   package under its `missing` (matplotlib is never needed here: `doctor` lists it under
+   `optional_missing`, for charts and diagrams only); `soffice` for `.docx`; `latexmk`
+   and `latexdiff` for `.tex`. If one is missing, tell the user how to install it (the
+   `doctor` output says) and stop.
 2. **Guidelines.** Follow the [linee-guida](../linee-guida/SKILL.md) skill with `<work>` as
    its work folder: it asks whether an existing `<work>/.help-me-write/linee-guida.yaml`
    is still valid, or builds it. Its `document_type` names the profile
@@ -98,7 +100,9 @@ cannot correct from the document itself becomes a question.
      what an edit says, and run it again), a missing document, an output that already
      exists (use the next free name the message gives), an unwritable folder.
    - LaTeX: then run
-     `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<parent>/<name>-differenze.pdf"`.
+     `hmw texdiff "<doc>" "<copy>/<main file name>" -o "<parent>/<name>-differenze.pdf"`
+     (when [help-me-write](../help-me-write/SKILL.md) handed you the review, the output
+     is `<rev>/<name>-differenze.pdf` instead).
      Exit 2: read the error message (the LaTeX does not compile: its first errors are
      quoted; the output already exists: use the next free name); exit 3: `latexmk` or
      `latexdiff` is missing. Comments are not written into LaTeX sources: the report

@@ -128,3 +128,19 @@ already answers.
   others, non-obvious statements.
 - Internal documents of the host may be cited only if the host allows it; otherwise
   describe them without details.
+
+## Writing budget
+
+How the allowed length is shared among the parts when chapters are planned, written or
+cut. A length the guidelines give for a part (`sections[].pages` in
+`linee-guida.yaml`) wins over these values.
+
+- **Introduzione:** 1–2 pages.
+- **Conclusione:** 1–2 pages.
+- **Body chapters:** the rest of the maximum of `pages`, after title page, table of
+  contents, introduction, conclusion and bibliography, shared among the body chapters in
+  proportion to the material that supports each (activities, results and figures listed
+  for it in `materiale.md`), not in equal parts. A short phase with little material gets
+  a short chapter.
+- **Allegati:** outside the budget only if the guidelines or the user say that annexes
+  do not count toward the page limit.

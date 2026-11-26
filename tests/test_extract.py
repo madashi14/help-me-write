@@ -102,6 +102,21 @@ def test_extract_dispatch_and_command(tmp_path, capsys):
     assert cli.main(["extract", str(tmp_path / "x.odt")]) == 2
 
 
+def test_extract_toc_heading_is_level_1(tmp_path):
+    import docx
+    from docx.enum.style import WD_STYLE_TYPE
+
+    p = write_docx(tmp_path / "a.docx", [("TOC Heading", "Indice"), ("Heading 1", "Introduzione"),
+                                          "Testo."])
+    document = docx.Document(str(p))
+    italian = document.styles.add_style("Titolo sommario", WD_STYLE_TYPE.PARAGRAPH)
+    document.add_paragraph("Sommario", style=italian)
+    document.save(str(p))
+    paras = extract_docx(p)
+    assert [(x["text"], x["heading_level"]) for x in paras] == [
+        ("Indice", 1), ("Introduzione", 1), ("Testo.", None), ("Sommario", 1)]
+
+
 def test_italian_paragraphs_cycle():
     base = italian_paragraphs(100)
     assert len(base) == 100 and base[0] == base[len(set(base))]

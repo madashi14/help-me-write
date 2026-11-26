@@ -5,7 +5,7 @@ from conftest import ROOT
 
 def test_claude_manifest():
     m = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
-    assert m["name"] == "help-me-write" and m["version"] == "0.1.0"
+    assert m["name"] == "help-me-write" and m["version"] == "0.2.0"
 
 
 def test_claude_marketplace_points_to_repo_root():

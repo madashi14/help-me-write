@@ -10,6 +10,8 @@ from . import cli, render
 
 MIN_PYTHON = (3, 10)
 PACKAGES = tuple(cli.PACKAGES)
+# import name -> what needs it: optional packages never stop the review (Part 1)
+OPTIONAL_PACKAGES = {"matplotlib": "charts and diagrams"}
 
 
 def _version(module_name):
@@ -29,7 +31,7 @@ def check_environment() -> dict:
     latexmk = shutil.which("latexmk")
     latexdiff = shutil.which("latexdiff")
 
-    missing = []
+    missing, optional_missing = [], []
     if not python_ok:
         missing.append({
             "what": "Python >= 3.10",
@@ -38,9 +40,10 @@ def check_environment() -> dict:
         })
     for name, ver in packages.items():
         if ver is None:
-            missing.append({
+            (optional_missing if name in OPTIONAL_PACKAGES else missing).append({
                 "what": f"Python package '{cli.PACKAGES[name]}' (import name '{name}')",
-                "needed_for": "Word/PDF/LaTeX/bibliography processing",
+                "needed_for": OPTIONAL_PACKAGES.get(
+                    name, "Word/PDF/LaTeX/bibliography processing"),
                 "how_to_install": cli.install_hint() + " (in a virtual environment if pip "
                                   "reports \"externally-managed-environment\")",
             })
@@ -70,23 +73,32 @@ def check_environment() -> dict:
         "latexmk": latexmk,
         "latexdiff": latexdiff,
         "missing": missing,
+        "optional_missing": optional_missing,
     }
 
 
 def summary(env: dict) -> str:
     lines = [f"Python {env['python']}: {'ok' if env['python_ok'] else 'too old (need >= 3.10)'}"]
     for name, ver in env["packages"].items():
-        lines.append(f"  package {name}: {ver or 'MISSING'}")
+        state = ver or "MISSING"
+        if not ver and name in OPTIONAL_PACKAGES:
+            state += f" (optional: {OPTIONAL_PACKAGES[name]})"
+        lines.append(f"  package {name}: {state}")
     for key in ("soffice", "latexmk", "latexdiff"):
         lines.append(f"  {key}: {env[key] or 'not found (optional)'}")
-    if env["missing"]:
+    optional = env.get("optional_missing", [])
+    for title, items in (("Missing:", env["missing"]),
+                         ("Optional, missing (only the features named need it):", optional)):
+        if items:
+            lines.append("")
+            lines.append(title)
+            for item in items:
+                lines.append(f"  - {item['what']} (needed for {item['needed_for']}): "
+                             f"{item['how_to_install']}")
+    if not env["missing"]:
         lines.append("")
-        lines.append("Missing:")
-        for item in env["missing"]:
-            lines.append(f"  - {item['what']} (needed for {item['needed_for']}): {item['how_to_install']}")
-    else:
-        lines.append("")
-        lines.append("Everything is installed.")
+        lines.append("Everything required is installed." if optional
+                     else "Everything is installed.")
     return "\n".join(lines)
 
 

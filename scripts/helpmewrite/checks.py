@@ -11,6 +11,7 @@ from .fonts import normalize_font
 FONT_SHARE = 0.95
 FONT_SIZE_TOLERANCE_PT = 0.5
 MAX_LISTED_PAGES = 5
+MIN_FULL_LINES = 5  # full lines of prose a page needs for chars_per_full_line (measure.py)
 
 _NUMBERING = re.compile(
     r"^(?:(?:capitolo|chapter)\s+)?(?:\d+(?:\.\d+)*\.?|\d+\)|[ivxlc]+[.)])\s*[-–—:]?\s+")
@@ -68,48 +69,77 @@ def _pages(n) -> str:
     return f"{n} page{'s' if n != 1 else ''}"
 
 
-def _skip_reason(p, last, value) -> str | None:
-    """Why a page is not evaluated by a per-page check, or None if it is."""
+def _lines_skip_reason(p, last) -> str | None:
+    """Why lines_per_page does not evaluate a page, or None if it does (a full page)."""
     if p.number == 1:
         return "title page"
-    if not p.is_full:
-        if not p.body_lines:
-            return "no body text"
+    if not p.body_lines:
+        return "no body text"
+    if not p.is_full or p.line_slots is None:
         if p.number == last:
             return "last page"
-        return ("not a full page: the text starts late or ends early, or a heading, figure "
-                "or table takes some of its lines")
-    if value(p) is None:
-        return "no full-width lines"
+        return ("not a full page: the text starts late or ends early, or a figure or table "
+                "without a caption leaves some of its lines empty")
     return None
 
 
-def _per_page(rule, pages, rng, value, unit) -> Check:
+def _chars_skip_reason(p, last) -> str | None:
+    """Why chars_per_line does not evaluate a page, or None if it does."""
+    if p.number == 1:
+        return "title page"
+    if not p.body_lines:
+        return "no body text"
+    if p.chars_per_full_line is None:
+        return (f"fewer than {MIN_FULL_LINES} full-width lines of prose (a table of contents, "
+                "a table or a list)")
+    return None
+
+
+def _chars_skip_with_bibliography(bibliography):
+    def skip_reason(p, last):
+        return _chars_skip_reason(p, last) or ("bibliography" if p.number in bibliography else None)
+    return skip_reason
+
+
+def _bibliography_pages(sections) -> set:
+    """Pages inside the span of a bibliography heading (empty without section spans)."""
+    from .bib import is_bibliography_heading  # lazy: bib imports the extractors
+
+    pages = set()
+    for span in sections or []:
+        if is_bibliography_heading(span.title):
+            pages.update(range(span.start_page, span.end_page + 1))
+    return pages
+
+
+def _per_page(rule, pages, rng, value, unit, skip_reason, scope, how="") -> Check:
+    """A range check of value(p) on the pages skip_reason does not skip (scope names them);
+    how, if given, says how the value is counted."""
     last = max((p.number for p in pages), default=0)
     skipped = {}
     for p in pages:
-        reason = _skip_reason(p, last, value)
+        reason = skip_reason(p, last)
         if reason:
             skipped.setdefault(reason, []).append(p.number)
     note = ("; not evaluated: " + "; ".join(f"{_page_list(numbers)} ({reason})"
                                             for reason, numbers in skipped.items())
             if skipped else "")
-    evaluated = [p for p in pages if _skip_reason(p, last, value) is None]
+    allowed = _allowed(rng) + (f"; {how}" if how else "")
+    evaluated = [p for p in pages if skip_reason(p, last) is None]
     if not evaluated:
-        return Check(rule, False, f"could not evaluate any page ({_allowed(rng)}){note}", [])
+        return Check(rule, False, f"could not evaluate any page ({allowed}){note}", [])
     bad = [p for p in evaluated if not _in_range(value(p), rng)]
     if bad:
         parts = [f"page {p.number}: {_num(value(p))} {unit}" for p in bad[:MAX_LISTED_PAGES]]
         if len(bad) > MAX_LISTED_PAGES:
             parts.append(f"and {len(bad) - MAX_LISTED_PAGES} more pages")
-        return Check(rule, False, "; ".join(parts) + f" ({_allowed(rng)}){note}",
+        return Check(rule, False, "; ".join(parts) + f" ({allowed}){note}",
                      [p.number for p in bad])
     values = [value(p) for p in evaluated]
     lo, hi = min(values), max(values)
     amount = _num(lo) if lo == hi else f"{_num(lo)}–{_num(hi)}"
     evaluated_pages = _page_list(p.number for p in evaluated)
-    return Check(rule, True, f"{amount} {unit} on full pages {evaluated_pages} "
-                             f"({_allowed(rng)}){note}", [])
+    return Check(rule, True, f"{amount} {unit} on {scope} {evaluated_pages} ({allowed}){note}", [])
 
 
 def _allowed_share(font_chars, allowed) -> float:
@@ -153,8 +183,9 @@ def _page_numbers(pages) -> Check:
     missing = [p.number for p in evaluated if not p.has_page_number]
     if missing:
         return Check("page_numbers", False,
-                     f"no page number on pages {_page_list(missing)} (looked for a number alone, "
-                     "or 'pag./pagina/page N', in the top or bottom 7% of the page)", missing)
+                     f"no page number on pages {_page_list(missing)}: looked for a number alone, "
+                     "or 'pag./pagina/page N', in the header or footer (the lines above the text "
+                     "or below it)", missing)
     return Check("page_numbers", True,
                  f"page number found on pages {_page_list(p.number for p in evaluated)}", [])
 
@@ -184,13 +215,14 @@ def _unstyled_heading(pages, names):
     return None
 
 
-def _section_checks(spans, section_rules, pages=()) -> list[Check]:
+def _section_checks(spans, section_rules, pages=(), source="docx") -> list[Check]:
     """Sections without headings (title page, body) are identified by position: not checked.
 
-    spans is None when the source has no readable headings (.tex, .pdf): every required
-    section with headings is then reported as not determined (ok=False), to check by hand.
-    A heading typed as plain (bold) text is found by a line of the PDF that is the heading:
-    present, "not styled as a heading", and its length cannot be determined.
+    spans is None when the source has no readable headings (a PDF without bookmarks): every
+    required section with headings is then reported as not determined (ok=False), to check
+    by hand. A heading typed as plain (bold) text is found by a line of the PDF that is the
+    heading: present, not marked as a heading (the wording follows source: "docx", "tex",
+    "pdf-bookmarks"), and its length cannot be determined.
     """
     checks = []
     for rule in section_rules:
@@ -201,17 +233,24 @@ def _section_checks(spans, section_rules, pages=()) -> list[Check]:
         if spans is None:
             if rule.required:
                 checks.append(Check(f"{rid}:present", False,
-                                    "cannot determine sections: headings are read only from .docx "
-                                    f"documents; check by hand for a heading {names}", []))
+                                    "cannot determine sections: this PDF has no bookmarks "
+                                    "(headings are read from .docx, from .tex sources or from "
+                                    f"PDF bookmarks); check by hand for a heading {names}", []))
             continue
         span = next((s for s in spans if _heading_matches(s.title, rule.headings)), None)
         unstyled = _unstyled_heading(pages, rule.headings) if span is None else None
         if unstyled is not None:
             number, line = unstyled
-            checks.append(Check(f"{rid}:present", True,
-                                f"'{line}' found on page {number}, but not styled as a heading "
-                                "(apply a Heading style so that it is in the table of contents)",
-                                [number]))
+            if source == "tex":
+                found = (f"'{line}' found on page {number} as plain text, "
+                         "not as \\chapter or \\section (use a sectioning command so that it is "
+                         "in the table of contents)")
+            elif source == "pdf-bookmarks":
+                found = f"'{line}' found on page {number} as plain text, not among the PDF bookmarks"
+            else:
+                found = (f"'{line}' found on page {number}, but not styled as a heading "
+                         "(apply a Heading style so that it is in the table of contents)")
+            checks.append(Check(f"{rid}:present", True, found, [number]))
             if rule.pages is not None:
                 checks.append(Check(f"{rid}:pages", False,
                                     f"cannot determine the length of '{line}': it is not styled "
@@ -235,8 +274,11 @@ def _section_checks(spans, section_rules, pages=()) -> list[Check]:
     return checks
 
 
-def check_rules(m_pages, sections, rules) -> list[Check]:
-    """One Check per rule present in the guidelines; sections=None means headings unknown."""
+def check_rules(m_pages, sections, rules, headings_source="docx") -> list[Check]:
+    """One Check per rule present in the guidelines; sections=None means headings unknown.
+
+    headings_source ("docx", "tex", "pdf-bookmarks") words the messages about a heading
+    found only as a line of text."""
     checks = []
     if rules.pages is not None:
         n = len(m_pages)
@@ -248,11 +290,14 @@ def check_rules(m_pages, sections, rules) -> list[Check]:
         checks.append(_font_size(m_pages, rules.font_size_pt))
     if rules.lines_per_page is not None:
         checks.append(_per_page("lines_per_page", m_pages, rules.lines_per_page,
-                                lambda p: p.body_lines, "body lines"))
+                                lambda p: p.line_slots, "body lines", _lines_skip_reason,
+                                "full pages", "a heading or caption counts for the lines it takes"))
     if rules.chars_per_line is not None:
         checks.append(_per_page("chars_per_line", m_pages, rules.chars_per_line,
-                                lambda p: p.chars_per_full_line, "chars per full line"))
+                                lambda p: p.chars_per_full_line, "chars per full line",
+                                _chars_skip_with_bibliography(_bibliography_pages(sections)),
+                                "pages"))
     if rules.page_numbers:
         checks.append(_page_numbers(m_pages))
-    checks.extend(_section_checks(sections, rules.sections, m_pages))
+    checks.extend(_section_checks(sections, rules.sections, m_pages, headings_source))
     return checks

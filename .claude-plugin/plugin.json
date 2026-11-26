@@ -1,7 +1,7 @@
 {
   "name": "help-me-write",
-  "description": "Review and write formal documents (internship reports, papers): checks guidelines, layout and bibliography, and proposes tracked corrections.",
-  "version": "0.1.0",
+  "description": "Write and review formal documents (internship reports, papers): writes chapter by chapter from a work folder, checks guidelines, layout and bibliography, and proposes tracked corrections.",
+  "version": "0.2.0",
   "author": {
     "name": "madashi14"
   },

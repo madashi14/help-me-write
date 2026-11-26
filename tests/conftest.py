@@ -35,3 +35,8 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "needs_latex" in item.keywords:
                 item.add_marker(skip)
+    if not (shutil.which("xelatex") and shutil.which("latexmk")):
+        skip = pytest.mark.skip(reason="xelatex/latexmk not installed")
+        for item in items:
+            if "needs_xelatex" in item.keywords:
+                item.add_marker(skip)

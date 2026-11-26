@@ -12,7 +12,7 @@ PROFILES = sorted((ROOT / "profili").glob("*.md"))
 
 PROFILE_HEADINGS = [
     "## Recognize", "## Typical structure", "## Default guidelines", "## Interview prompts",
-    "## Tone", "## Content checklist", "## Citation needs",
+    "## Tone", "## Content checklist", "## Citation needs", "## Writing budget",
 ]
 SKILL_DIR_PLACEHOLDER = "<this skill's directory>/"
 
@@ -48,7 +48,9 @@ def relative_paths(body: str) -> list[str]:
 
 
 def test_expected_skills_and_profiles_exist():
-    for name in ["linee-guida", "revisione", "revisione-bibliografia"]:
+    for name in ["linee-guida", "revisione", "revisione-bibliografia", "help-me-write",
+                 "analisi-materiale", "struttura", "intervista-capitolo", "scrittura-capitolo",
+                 "figure"]:
         assert (ROOT / "skills" / name / "SKILL.md") in SKILLS
     assert {p.stem for p in PROFILES} >= {"relazione-tirocinio", "generico"}
 
@@ -271,3 +273,146 @@ def test_review_folder_has_seconds_and_latex_outputs_beside_the_project(skill_md
     assert "`<parent>/<name>-revisionato`" in body
     flat = " ".join(body.split())
     assert "output that already exists (use the next free name the message gives)" in flat
+
+
+def test_bib_prompt_unique_source_names():
+    text = (ROOT / "skills" / "revisione-bibliografia"
+            / "prompt-revisore-bibliografia.md").read_text(encoding="utf-8")
+    assert "replaced by __" in text
+
+
+# --- entry skill and material analysis (Part 2, Task 11) --------------------------------
+
+def test_skills_use_known_commands():
+    """Every `hmw <command>` cited in a SKILL.md or a prompt exists in cli._COMMANDS."""
+    from helpmewrite import cli
+
+    for document in SKILLS + PROMPTS:
+        for line in command_lines(document.read_text(encoding="utf-8")):
+            command = hmw_arguments(line)[0]
+            assert command in cli._COMMANDS, f"{document.parent.name}: `{line}`"
+
+
+def test_entry_skill_rules():
+    _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
+    flat = " ".join(body.split())
+    for needed in ["LaTeX or Word", "never ask again", "state modified", "[DA VERIFICARE",
+                   "give them this `<work>` (absolute) as their work folder",
+                   "the working copy's main `.tex`"]:
+        assert needed in flat, needed
+
+
+def test_material_skill_and_template():
+    folder = ROOT / "skills" / "analisi-materiale"
+    _, body = _split(folder / "SKILL.md")
+    assert "](modello-materiale.md)" in body
+    template = (folder / "modello-materiale.md").read_text(encoding="utf-8")
+    block = re.search(r"^```markdown\n(.*?)^```", template, re.S | re.M).group(1)
+    headings = [line[3:] for line in block.splitlines() if line.startswith("## ")]
+    assert headings == ["Sintesi del lavoro", "Mappa del materiale", "Cronologia",
+                        "Dati e numeri", "Note dell'autore", "Non letto", "Lacune e domande"]
+
+
+# --- structure, interview, writing and figures (Part 2, Task 12) ------------------------
+
+def _flat_body(name):
+    _, body = _split(ROOT / "skills" / name / "SKILL.md")
+    return " ".join(body.split())
+
+
+def test_writing_skills_rules():
+    writing = _flat_body("scrittura-capitolo")
+    for needed in ["[DA VERIFICARE", "Fonti del capitolo", "## Writing budget",
+                   "](formato-capitoli.md)", "](../figure/SKILL.md)", "state modified",
+                   "--status approvato", "--status scritto"]:
+        assert needed in writing, needed
+    # the list of prose to avoid
+    for needed in ["## Prose to avoid", "riveste un ruolo fondamentale", "nel panorama attuale",
+                   "in conclusione possiamo affermare", "triplets", "intensifiers",
+                   "any internship"]:
+        assert needed in writing, needed
+    structure = _flat_body("struttura")
+    for needed in ["never reduce", "texdiff", "state outline", "title_page_approved=true",
+                   "manifest.yaml", "titlepage", "latex-init", "circa", "-capitoli-nuovi.docx"]:
+        assert needed in structure, needed
+    interview = _flat_body("intervista-capitolo")
+    for needed in ["at most 8 questions", "-intervista.md", "--status intervista-fatta",
+                   "--notes"]:
+        assert needed in interview, needed
+    figures = _flat_body("figure")
+    for needed in [".fonte.json", "hmw chart", "hmw diagram", "\\ref", "@fig:"]:
+        assert needed in figures, needed
+
+
+def test_entry_skill_links_the_writing_skills():
+    """Ruling R11-2: the phase table links the skills it sends each phase to."""
+    _, body = _split(ROOT / "skills" / "help-me-write" / "SKILL.md")
+    for name in ["struttura", "intervista-capitolo", "scrittura-capitolo"]:
+        assert f"](../{name}/SKILL.md)" in body, name
+
+
+# --- final fix wave (Part 2) ----------------------------------------------------------------
+
+def test_some_skill_closes_the_review():
+    """I2: after the review a skill records the corrected copy and sets the chapters to
+    revisionato, so the flow reaches `fine`."""
+    bodies = {skill.parent.name: " ".join(_split(skill)[1].split()) for skill in SKILLS}
+    assert any("--status revisionato" in body for body in bodies.values())
+    entry = bodies["help-me-write"]
+    for needed in ["Closing the review", 'hmw state record "<work>" "<corrected>"',
+                   'hmw state set "<work>" output="<corrected>"', "--status revisionato",
+                   "rapporto.md", "## Decisioni"]:
+        assert needed in entry, needed
+
+
+def test_skills_record_every_plugin_write():
+    """I3: the fingerprint is recorded right after each write, not only at approval."""
+    entry = _flat_body("help-me-write")
+    assert "Record every write" in entry
+    writing = _flat_body("scrittura-capitolo")
+    assert writing.count('hmw state record "<work>" "<work>/<output>"') >= 3  # write, change, approval
+    assert "right after the write" in writing
+    structure = _flat_body("struttura")
+    assert "right after the write run `hmw state record" in structure  # P5, before approval
+    assert "right after `latex-init`" in structure
+
+
+def test_work_folder_never_climbs_above_the_named_folder():
+    """R-F1: no "use its parent"; the working copy may live inside the named folder."""
+    for name in ["help-me-write", "struttura"]:
+        body = _flat_body(name)
+        assert "use its parent" not in body and "moved to the parent" not in body
+        assert "<project>-help-me-write" in body and "top level" in body
+    assert "never a folder above it" in _flat_body("help-me-write")
+
+
+def test_writing_flow_diff_pdfs_go_to_the_review_folder():
+    """R-F2: the PDFs of differences of the writing flow are written into <rev>."""
+    structure = _flat_body("struttura")
+    assert '-o "<rev>/<base>-v2-differenze.pdf"' in structure
+    assert '-o "<work>/<base>-v2-differenze.pdf"' not in structure
+    assert "`<rev>/<name>-differenze.pdf`" in _flat_body("help-me-write")
+    assert "`<rev>/<name>-differenze.pdf`" in _flat_body("revisione")
+
+
+def test_approved_chapter_changed_only_with_a_new_approval():
+    """S2: the page budget never shortens an approved chapter silently."""
+    for name in ["scrittura-capitolo", "struttura"]:
+        body = _flat_body(name)
+        assert "never changed without a new approval" in body, name
+        assert "--status scritto" in body, name
+
+
+def test_part_1_skills_do_not_stop_for_matplotlib():
+    """R-F3: doctor lists matplotlib as optional; the review never stops for it."""
+    for name in ["revisione", "revisione-bibliografia"]:
+        body = _flat_body(name)
+        assert "optional_missing" in body and "matplotlib" in body, name
+        assert "Needed: every Python package;" not in body and "every Python package is needed" not in body
+
+
+def test_struttura_word_draft_without_copy_revises_the_draft():
+    """I4: with no Word copy yet the first revision reads the draft itself."""
+    structure = _flat_body("struttura")
+    assert "the input is `<work>/<draft>`" in structure
+    assert "track creates the folder" in structure

@@ -18,23 +18,34 @@ HMW_SCRIPT = PLUGIN_ROOT / "scripts" / "hmw.py"
 REQUIREMENTS = PLUGIN_ROOT / "requirements.txt"
 # import name -> name on PyPI
 PACKAGES = {"docx": "python-docx", "lxml": "lxml", "pdfplumber": "pdfplumber",
-            "yaml": "PyYAML", "bibtexparser": "bibtexparser"}
+            "yaml": "PyYAML", "bibtexparser": "bibtexparser",
+            "matplotlib": "matplotlib"}
 
 # name -> (module, add_arguments, handler, json_output, packages needed)
 # json_output=False: -o belongs to the command (the document it produces), not to JSON.
 _COMMANDS = {
+    "assemble": ("assemble", "add_arguments", "run", False,
+                 ("lxml", "docx", "yaml", "bibtexparser")),
     "bib": ("bib", "add_bib_arguments", "run_bib", True,
             ("lxml", "docx", "pdfplumber", "bibtexparser")),
+    "chart": ("figure", "add_chart_arguments", "run_chart", False, ("matplotlib",)),
+    "detect": ("detect", "add_arguments", "run", True, ("lxml", "docx")),
+    "diagram": ("figure", "add_diagram_arguments", "run_diagram", False, ("matplotlib",)),
     "doctor": ("doctor", "add_arguments", "run", True, ()),
     "extract": ("extract", "add_arguments", "run", True, ("lxml", "docx", "pdfplumber")),
     "format": ("layout", "add_format_arguments", "run_format", False, ("lxml", "docx")),
+    "latex-init": ("latexproj", "add_arguments", "run", False, ()),
     "layout": ("layout", "add_arguments", "run", True, ("yaml",)),
+    "material": ("materiale", "add_material_arguments", "run_material", True, ()),
     "measure": ("measure", "add_arguments", "run", True,
                 ("lxml", "docx", "pdfplumber", "yaml")),
+    "notebook": ("materiale", "add_notebook_arguments", "run_notebook", False, ()),
     "pdftext": ("bib", "add_pdftext_arguments", "run_pdftext", True,
                 ("lxml", "pdfplumber")),
     "rules": ("rules", "add_arguments", "run", True, ("yaml",)),
+    "state": ("state", "add_arguments", "run", False, ("yaml",)),
     "texdiff": ("track_tex", "add_texdiff_arguments", "run_texdiff", False, ("lxml",)),
+    "titlepage": ("titlepage", "add_arguments", "run", False, ("lxml", "docx")),
     "track": ("edits", "add_track_arguments", "run_track", False, ("lxml", "docx")),
 }
 
@@ -46,14 +57,15 @@ class CliError(Exception):
 def install_hint() -> str:
     """The command that installs every Python package the plugin needs."""
     if REQUIREMENTS.is_file():
-        return f'python -m pip install -r "{REQUIREMENTS}"'
-    return "python -m pip install " + " ".join(
+        return f'"{sys.executable}" -m pip install -r "{REQUIREMENTS}"'
+    return f'"{sys.executable}" -m pip install ' + " ".join(
         f'"{name}"' if any(c in name for c in "<>=") else name
-        for name in ("python-docx>=1.2", "lxml", "pdfplumber", "PyYAML", "bibtexparser>=1.4,<2"))
+        for name in ("python-docx>=1.2", "lxml", "pdfplumber", "PyYAML", "bibtexparser>=1.4,<2",
+                     "matplotlib>=3.7"))
 
 
 def doctor_command() -> str:
-    return f'python "{HMW_SCRIPT}" doctor'
+    return f'"{sys.executable}" "{HMW_SCRIPT}" doctor'
 
 
 def missing_packages_message(names) -> str:

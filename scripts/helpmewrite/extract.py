@@ -16,6 +16,7 @@ MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _P, _R, _T = f"{{{W}}}p", f"{{{W}}}r", f"{{{W}}}t"
 _FALLBACK = f"{{{MC}}}Fallback"
 _STYLE_NAME = re.compile(r"^(?:heading|titolo)\s*(\d+)$", re.IGNORECASE)
+_TOC_HEADING = re.compile(r"^(?:toc heading|titolo sommario)$", re.IGNORECASE)
 
 
 def iter_body_paragraphs(doc) -> list:
@@ -69,6 +70,8 @@ def _heading_level(p, styles):
         m = _STYLE_NAME.match(style_el.name or "")
         if m:
             return int(m.group(1))
+        if _TOC_HEADING.match(style_el.name or ""):
+            return 1  # the table of contents' own title: a level-1 section without outline level
         lvl = style_el.element.find(f"{{{W}}}pPr/{{{W}}}outlineLvl")
         if lvl is not None and lvl.get(f"{{{W}}}val", "").isdigit():
             n = int(lvl.get(f"{{{W}}}val"))

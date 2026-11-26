@@ -47,10 +47,11 @@ needed only for `pdftext`.
 - The sources: the PDF files under `{SOURCES}` and its subfolders, except
   `.help-me-write/` and the document's own PDFs, which never support its claims: a PDF
   named like the document (the extract's `source`; also with `-revisionato` or
-  `-formattato` after the name), any `*-differenze.pdf`, and anything inside a
-  `*-revisionato*` folder (`excluded_sources` lists those `bib` found).
+  `-formattato` after the name), `*-differenze.pdf` named after the document, and anything inside a
+  `*-revisionato*` folder named after the document or its folder (`excluded_sources` lists those `bib` found).
 - To read a PDF, write its text to a file and read that file with your file-reading tool:
-  `{HMW} pdftext "<file>.pdf" -o "{SOURCE_TEXTS}/<file name without .pdf>.json"` writes
+  `{HMW} pdftext "<file>.pdf" -o "{SOURCE_TEXTS}/<path of the PDF relative to the work folder, every / or \ replaced by __, without .pdf>.json"`
+  writes
   `{"page_count": N, "pages": [{"page": 1, "text": "…"}]}`, pages numbered from 1. Never
   print a whole PDF in the shell: its output is cut off. If the JSON file is too long to
   read at once, read it in parts, or write page ranges with `--pages A-B` (1-based,

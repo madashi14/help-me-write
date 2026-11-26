@@ -438,30 +438,206 @@ def apply_layout(src, layout: Layout, dst) -> list[str]:
     return changes
 
 
+# --- applying a layout to a copy of a LaTeX project ------------------------------------
+
+BLOCK_BEGIN = "% help-me-write: impaginazione (inizio)"
+BLOCK_END = "% help-me-write: impaginazione (fine)"
+_BLOCK_RE = re.compile(re.escape(BLOCK_BEGIN) + r".*?" + re.escape(BLOCK_END) + r"[ \t]*\r?\n?",
+                       re.DOTALL)
+_BASELINESKIP_PT = {10: 12.0, 11: 13.6, 12: 14.5}  # normal \baselineskip of the standard classes
+_COPY_IGNORED = ("*.aux", "*.log", "*.toc", "*.out", "*.lof", "*.lot", "*.synctex.gz",
+                 "*.fdb_latexmk", "*.fls", "*.bbl", "*.blg", "*.xdv")
+_BEGIN_DOC_RE = re.compile(r"^[^%\n]*?(\\begin\{document\})", re.MULTILINE)
+_CLASS_RE = re.compile(r"\\documentclass\s*(?:\[([^\]]*)\])?")
+_SIZE_RE = re.compile(r"(?<![\w.])(\d+)pt\b")
+_MAINFONT_RE = re.compile(r"\\setmainfont\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}")
+_FONT_PACKAGES = {"times": "times", "mathptmx": "times", "newtxtext": "times", "tgtermes": "times",
+                  "helvet": "helvetica", "arial": "helvetica", "courier": "courier",
+                  "cmtt": "courier", "tgcursor": "courier"}
+
+
+def setstretch_factor(line_pitch_pt: float, class_size_pt: int) -> float:
+    """\\setstretch value giving a line pitch: pitch / normal baselineskip, 4 decimals."""
+    base = _BASELINESKIP_PT.get(class_size_pt)
+    if base is None:
+        raise LayoutError(f"unsupported document class size {class_size_pt} pt "
+                          "(the standard classes use 10, 11 or 12 pt)")
+    return round(line_pitch_pt / base, 4)
+
+
+def _strip_comments(text: str) -> str:
+    return re.sub(r"(?<!\\)%.*", "", text)
+
+
+def _loads_package(preamble: str, name: str) -> bool:
+    for m in re.finditer(r"\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}", preamble):
+        if name in [p.strip() for p in m.group(1).split(",")]:
+            return True
+    return False
+
+
+def _main_font(preamble: str):
+    """(name, family or None) of the document's main font in a (comment-free) preamble."""
+    m = _MAINFONT_RE.search(preamble)
+    if m:
+        return m.group(1).strip(), normalize_font(m.group(1))
+    for m in re.finditer(r"\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}", preamble):
+        for pkg in (p.strip() for p in m.group(1).split(",")):
+            if pkg in _FONT_PACKAGES:
+                return pkg, _FONT_PACKAGES[pkg]
+    return "Computer Modern", None
+
+
+def geometry_paper(layout: Layout) -> str:
+    """geometry paper option: a4paper for A4, else explicit paperwidth/paperheight."""
+    if tuple(layout.paper_cm) == (21, 29.7):
+        return "a4paper"
+    return f"paperwidth={layout.paper_cm[0]:g}cm,paperheight={layout.paper_cm[1]:g}cm"
+
+
+def _layout_block(layout: Layout, preamble: str, size: int) -> str:
+    m = layout.margins_cm
+    lines = [BLOCK_BEGIN]
+    if not _loads_package(preamble, "geometry"):
+        lines.append("\\usepackage{geometry}")
+    if layout.line_pitch_pt is not None and not _loads_package(preamble, "setspace"):
+        lines.append("\\usepackage{setspace}")
+    paper = geometry_paper(layout)
+    lines.append(f"\\geometry{{{paper},top={m['top']:g}cm,bottom={m['bottom']:g}cm,"
+                 f"left={m['left']:g}cm,right={m['right']:g}cm}}")
+    if layout.line_pitch_pt is not None:
+        lines.append(f"\\setstretch{{{setstretch_factor(layout.line_pitch_pt, size):g}}}")
+    lines.append(BLOCK_END)
+    return "\n".join(lines) + "\n"
+
+
+def apply_layout_tex(main: Path, layout: Layout | None, out_dir: Path) -> list[str]:
+    """Copy the project of main to out_dir and put the layout block before \\begin{document}.
+
+    Without a layout the copy is plain. The copy leaves out build artefacts and the folders
+    of the shared skip rule (`.git`, `.help-me-write`, other help-me-write outputs). Returns
+    the changes made and the warnings. Raises EditsError for an unusable out_dir (nested in
+    the project, except a top-level `<project>-help-me-write…` folder; containing the
+    project; or not empty) and LayoutError when main has no \\begin{document}.
+    """
+    import shutil
+    import tempfile
+
+    from .extract import read_tex_text
+    from .track_tex import _prepare_out_dir, copy_ignore
+
+    main = Path(main)
+    if not main.is_file():
+        raise LayoutError(f"main file not found: {main}")
+    out_dir = _prepare_out_dir(main.parent, Path(out_dir))
+    text, latin1 = read_tex_text(main)
+    begin = None if layout is None else _BEGIN_DOC_RE.search(text)
+    if layout is not None and begin is None:
+        raise LayoutError(f"no \\begin{{document}} in {main.name}: pass the main file of the project")
+
+    base_ignore = copy_ignore(*_COPY_IGNORED)
+
+    def ignore(folder, names):
+        skipped = set(base_ignore(folder, names))
+        if Path(folder).resolve() == main.parent.resolve():
+            skipped.add(main.with_suffix(".pdf").name)
+        return skipped
+
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    build = Path(tempfile.mkdtemp(prefix=".hmw-format-", dir=out_dir.parent))
+    changes = []
+    try:
+        shutil.copytree(main.parent, build, dirs_exist_ok=True, ignore=ignore)
+        changes.append(f"copied the project of {main.name} without build artefacts")
+        if layout is not None:
+            had_block = _BLOCK_RE.search(text) is not None
+            text = _BLOCK_RE.sub("", text)
+            begin = _BEGIN_DOC_RE.search(text)
+            preamble = _strip_comments(text[:begin.start(1)])
+            cls = _CLASS_RE.search(preamble)
+            sizes = _SIZE_RE.findall(cls.group(1) or "") if cls else []
+            size = int(sizes[-1]) if sizes else 10
+            block = _layout_block(layout, preamble, size)
+            text = text[:begin.start(1)] + block + text[begin.start(1):]
+            data = text.encode("latin-1" if latin1 else "utf-8", errors="surrogateescape")
+            (build / main.name).write_bytes(data)
+            m = layout.margins_cm
+            changes.append(
+                ("replaced" if had_block else "added") + f" the layout block in {main.name}: margins cm "
+                f"top {m['top']}, bottom {m['bottom']}, left {m['left']}, right {m['right']}"
+                + (f", line stretch {setstretch_factor(layout.line_pitch_pt, size):g} "
+                   f"(class size {size} pt)" if layout.line_pitch_pt is not None else ""))
+            name, family = _main_font(preamble)
+            if family != layout.family:
+                changes.append(f"font not changed: the document uses {name}, "
+                               f"the layout asks for {layout.family}")
+        if out_dir.exists():
+            out_dir.rmdir()
+        build.rename(out_dir)
+    except BaseException:
+        shutil.rmtree(build, ignore_errors=True)
+        raise
+    return changes
+
+
 def add_format_arguments(parser):
-    parser.add_argument("input", help="the .docx to format (never modified)")
-    parser.add_argument("--layout", required=True, help="layout.json from the layout command")
-    parser.add_argument("-o", "--output", required=True, help="formatted .docx to write")
+    parser.add_argument("input", help="the .docx (or the main .tex of a project) to format "
+                                      "(never modified)")
+    parser.add_argument("--layout", help="layout.json from the layout command (required for "
+                                         ".docx; without it a .tex project is only copied)")
+    parser.add_argument("-o", "--output", required=True,
+                        help="formatted .docx to write, or a new folder for a .tex project")
+
+
+def _run_format_tex(args) -> int:
+    from . import cli
+    from .edits import EditsError
+
+    try:
+        layout = load_layout(args.layout) if args.layout else None
+        changes = apply_layout_tex(Path(args.input), layout, Path(args.output))
+    except EditsError as exc:
+        for problem in exc.problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 2
+    except (LayoutError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    cli.emit({"output": str(args.output), "changes": changes}, _no_json_file(args),
+             text="\n".join([f"wrote {args.output}"] + [f"- {c}" for c in changes]))
+    return 0
 
 
 def run_format(args) -> int:
     from . import cli
 
+    if Path(args.input).suffix.lower() == ".tex":
+        return _run_format_tex(args)
+    if not args.layout:
+        print("error: --layout is required to format a .docx", file=sys.stderr)
+        return 2
     if cli.refuses_overwrite(args.input, args):
         return 2
     if cli.refuses_existing_output(args.output):
         return 2
     try:
         layout = load_layout(args.layout)
-        changes = apply_layout(args.input, layout, args.output)
     except LayoutError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except ValueError as exc:
+    try:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"error: cannot create the folder of {args.output}: {exc.strerror or exc}",
+              file=sys.stderr)
+        return 2
+    try:
+        changes = apply_layout(args.input, layout, args.output)
+    except (LayoutError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # unreadable/not a docx, unwritable destination
-        print(f"error: cannot format {args.input}: {exc!r}", file=sys.stderr)
+        print(f"error: cannot format {args.input} into {args.output}: {exc!r}", file=sys.stderr)
         return 2
     cli.emit({"output": str(args.output), "changes": changes}, _no_json_file(args),
              text="\n".join([f"wrote {args.output}"] + [f"- {c}" for c in changes]))

@@ -127,19 +127,71 @@ def accepted_view_settings(xml: bytes):
     return (text[:at] + element + text[at:]).encode("utf-8")
 
 
+_NEW_SETTINGS = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    f'<w:settings xmlns:w="{_W_NS}"><w:revisionView w:markup="false" w:insDel="false" '
+    'w:formatting="false"/></w:settings>').encode("utf-8")
+_SETTINGS_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"
+_SETTINGS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
+
+
+def _with_settings_override(xml: bytes) -> bytes:
+    text = xml.decode("utf-8")
+    if re.search(r'PartName="/word/settings\.xml"', text, re.I):
+        return xml
+    at = text.rfind("</")
+    if at < 0:
+        raise ValueError("no content types")
+    return (text[:at] + f'<Override PartName="/word/settings.xml" ContentType="{_SETTINGS_TYPE}"/>'
+            + text[at:]).encode("utf-8")
+
+
+def _with_settings_relation(xml: bytes) -> bytes:
+    text = xml.decode("utf-8")
+    for rel in re.findall(r"<Relationship\b[^>]*>", text):
+        if re.search(r'Type="[^"]*/relationships/settings"', rel):
+            if re.search(r'Target="(?:/word/|\./)?settings\.xml"', rel):
+                return xml  # already points at the part
+            raise ValueError("settings relationship points elsewhere")
+    at = text.rfind("</")
+    if at < 0:
+        raise ValueError("no relationships")
+    ids = set(re.findall(r'Id="([^"]*)"', text))
+    n = 1
+    while f"rIdHmwSettings{n}" in ids:
+        n += 1
+    return (text[:at] + f'<Relationship Id="rIdHmwSettings{n}" Type="{_SETTINGS_REL}" '
+            'Target="settings.xml"/>' + text[at:]).encode("utf-8")
+
+
 def _accepted_copy(src: Path, folder: Path) -> Path:
     """A copy of src in folder that shows the final text; src itself if that cannot be made
     (LibreOffice then reports the problem with the file)."""
     dst = folder / src.name
     try:
         with zipfile.ZipFile(src) as zin:
-            settings = accepted_view_settings(zin.read("word/settings.xml"))
-            if settings is None:
-                return src
+            names = zin.namelist()
+            has_settings = "word/settings.xml" in names
+            if has_settings:
+                settings = accepted_view_settings(zin.read("word/settings.xml"))
+                if settings is None:
+                    return src
+            else:
+                settings = _NEW_SETTINGS
+                if not {"[Content_Types].xml", "word/_rels/document.xml.rels"} <= set(names):
+                    return src
             with zipfile.ZipFile(dst, "w") as zout:
                 for item in zin.infolist():
-                    data = settings if item.filename == "word/settings.xml" else zin.read(item)
+                    data = zin.read(item)
+                    if item.filename == "word/settings.xml":
+                        data = settings
+                    elif not has_settings and item.filename == "[Content_Types].xml":
+                        data = _with_settings_override(data)
+                    elif not has_settings and item.filename == "word/_rels/document.xml.rels":
+                        data = _with_settings_relation(data)
                     zout.writestr(item, data)
+                if not has_settings:
+                    zout.writestr("word/settings.xml", settings)
     except (zipfile.BadZipFile, KeyError, OSError, RuntimeError, ValueError):
         return src
     return dst

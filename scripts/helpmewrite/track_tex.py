@@ -12,9 +12,9 @@ from .render import RenderError, render_pdf, tex_engine
 from .track_docx import ApplyResult
 
 WINDOW = 2
-_IGNORED_DIRS = (".help-me-write",)
 _IGNORED_FILES = ("hmw-texdiff-*", "*.aux", "*.log", "*.fls", "*.fdb_latexmk",
                   "*.synctex.gz", "*.out", "*.toc")
+_BUILD_PREFIXES = (".hmw-format-", ".hmw-track-")  # the temporary folders of the copies
 _TIMEOUT_S = 180
 _LATEXDIFF_HINT = ("latexdiff is needed to show the differences: install TeX Live "
                    "(https://tug.org/texlive/) or MiKTeX (https://miktex.org/)")
@@ -24,10 +24,38 @@ def _inside(path: Path, folder: Path) -> bool:
     return path == folder or folder in path.parents
 
 
+def copy_ignore(*patterns):
+    """copytree ignore: build artefacts (file patterns), the folders of the shared skip rule
+    (detect.skip_dir: `.git`, `.help-me-write`, `*-help-me-write*`, `*-revisionato*`, ...),
+    so a copy never takes the state, another copy or itself, and the temporary build
+    folders of format and track."""
+    from .detect import skip_dir
+
+    file_ignore = shutil.ignore_patterns(*patterns)
+
+    def ignore(folder, names):
+        skipped = set(file_ignore(folder, names))
+        for name in names:
+            if (skip_dir(name) or name.startswith(_BUILD_PREFIXES)) and (Path(folder) / name).is_dir():
+                skipped.add(name)
+        return skipped
+
+    return ignore
+
+
+def output_inside_allowed(src_dir: Path, out_dir: Path) -> bool:
+    """True for the one output allowed inside a project folder (R-F1): a folder at its top
+    level named `<project>-help-me-write…`, used when the user's folder is the project."""
+    return (out_dir.parent == src_dir
+            and out_dir.name.casefold().startswith(f"{src_dir.name}-help-me-write".casefold()))
+
+
 def _prepare_out_dir(src_dir: Path, out_dir: Path) -> Path:
     src_dir, out_dir = src_dir.resolve(), out_dir.resolve()
-    if _inside(out_dir, src_dir):
-        raise EditsError([f"output folder {out_dir} is inside the source folder {src_dir}"])
+    if _inside(out_dir, src_dir) and not output_inside_allowed(src_dir, out_dir):
+        raise EditsError([f"output folder {out_dir} is inside the source folder {src_dir}: "
+                          f"inside it only a folder {src_dir.name}-help-me-write… at its top "
+                          "level is allowed"])
     if _inside(src_dir, out_dir):
         raise EditsError([f"source folder {src_dir} is inside the output folder {out_dir}"])
     if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
@@ -85,7 +113,7 @@ def apply_edits_tex(main: Path, edits: EditSet, out_dir: Path) -> ApplyResult:
     build = Path(tempfile.mkdtemp(prefix=".hmw-track-", dir=out_dir.parent))
     try:
         shutil.copytree(main.parent, build, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns(*_IGNORED_DIRS, *_IGNORED_FILES))
+                        ignore=copy_ignore(*_IGNORED_FILES))
         result = _apply(build, edits)
         if out_dir.exists():
             out_dir.rmdir()

@@ -11,7 +11,7 @@ from fixtures.builders import write_docx
 from helpmewrite import cli, doctor
 
 HMW = ROOT / "scripts" / "hmw.py"
-PACKAGES = ("docx", "lxml", "pdfplumber", "yaml", "bibtexparser")
+PACKAGES = ("docx", "lxml", "pdfplumber", "yaml", "bibtexparser", "matplotlib")
 
 
 # --- Python version ----------------------------------------------------------------------
@@ -41,10 +41,13 @@ def test_doctor_runs_without_any_package(monkeypatch, capsys):
     assert cli.main(["doctor", "--json"]) == 0
     env = json.loads(capsys.readouterr().out)
     assert env["packages"] == {name: None for name in PACKAGES}
-    hints = [m["how_to_install"] for m in env["missing"] if "package" in m["what"]]
-    assert len(hints) == 5
+    hints = [m["how_to_install"] for m in env["missing"] + env["optional_missing"]
+             if "package" in m["what"]]
+    assert len(hints) == len(PACKAGES)
+    assert [m["what"] for m in env["optional_missing"]] == [
+        "Python package 'matplotlib' (import name 'matplotlib')"]
     requirements = str(ROOT / "requirements.txt")
-    assert all(f'python -m pip install -r "{requirements}"' in h for h in hints)
+    assert all(f'"{sys.executable}" -m pip install -r "{requirements}"' in h for h in hints)
     assert all("externally-managed-environment" in h for h in hints)
 
 
@@ -55,7 +58,7 @@ def test_command_with_a_missing_package_exits_3_with_the_install_command(
     assert cli.main(["extract", str(src)]) == 3
     err = capsys.readouterr().err
     assert "missing Python package(s): lxml" in err
-    assert f'python "{HMW}" doctor' in err
+    assert f'"{sys.executable}" "{HMW}" doctor' in err
     assert str(ROOT / "requirements.txt") in err and "Traceback" not in err
 
 
@@ -86,9 +89,16 @@ def test_hmw_without_site_packages_doctor_and_extract():
 def test_install_hint_lists_the_packages_without_requirements(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "REQUIREMENTS", tmp_path / "missing.txt")
     hint = cli.install_hint()
-    assert hint.startswith("python -m pip install ")
-    for name in ('"python-docx>=1.2"', "lxml", "pdfplumber", "PyYAML", '"bibtexparser>=1.4,<2"'):
+    assert " -m pip install " in hint
+    for name in ('"python-docx>=1.2"', "lxml", "pdfplumber", "PyYAML", '"bibtexparser>=1.4,<2"', '"matplotlib>=3.7"'):
         assert name in hint
+
+
+def test_install_hint_uses_running_python():
+    import sys
+
+    assert f'"{sys.executable}" -m pip install' in cli.install_hint()
+    assert f'"{sys.executable}"' in cli.doctor_command()
 
 
 # --- output and unexpected errors ---------------------------------------------------------
@@ -121,11 +131,16 @@ def test_unexpected_exception_exits_2_without_traceback(monkeypatch, capsys):
 def test_parser_builds_every_command():
     parser = cli._build_parser()
     for name in cli._COMMANDS:
-        args = {"bib": ["x.docx"], "doctor": [], "extract": ["x.docx"],
+        args = {"assemble": ["m.yaml", "-o", "x.docx"],
+                "bib": ["x.docx"], "chart": ["s.json", "-o", "g.png"],
+                "diagram": ["d.json", "-o", "d.png"], "detect": ["w"], "state": ["show", "w"], "doctor": [], "extract": ["x.docx"],
                 "format": ["x.docx", "--layout", "l.json", "-o", "y.docx"],
+                "latex-init": ["p", "--layout", "l.json", "--chapters", "c.json"],
                 "layout": ["--rules", "r.yaml", "--font", "Times"],
+                "material": ["w"], "notebook": ["n.ipynb", "-o", "n.md"],
                 "measure": ["x.docx", "--rules", "r.yaml"], "pdftext": ["x.pdf"],
                 "rules": ["validate", "r.yaml"], "texdiff": ["a.tex", "b.tex", "-o", "d.pdf"],
+                "titlepage": ["x.docx", "--values", "v.json", "-o", "y.docx"],
                 "track": ["x.docx", "--edits", "e.json", "-o", "y.docx"]}[name]
         assert parser.parse_args([name] + args).handler
 
